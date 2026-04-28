@@ -90,7 +90,7 @@ app.get("/api/streetview", async (req, res) => {
 
 // ── Serve Vite build in production ────────────────────────────────────────
 app.use(express.static(join(__dirname, "dist")));
-app.get("*", (_req, res) => {
+app.use((_req, res) => {
   res.sendFile(join(__dirname, "dist", "index.html"));
 });
 
