@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node --env-file=.env server.js",
+    "dev:all": "npm run dev:server & npm run dev",
     "build": "vite build",
+    "start": "node --env-file=.env server.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
