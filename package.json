@@ -8,7 +8,7 @@
     "dev:server": "node --env-file=.env server.js",
     "dev:all": "npm run dev:server & npm run dev",
     "build": "vite build",
-    "start": "node --env-file=.env server.js",
+    "start": "node server.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
