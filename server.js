@@ -40,20 +40,26 @@ app.get("/api/property", async (req, res) => {
 
   try {
     const url = `https://api.rentcast.io/v1/properties?address=${encodeURIComponent(address)}`;
+    console.log("[Rentcast] Request URL:", url);
+    console.log("[Rentcast] API key present:", !!process.env.RENTCAST_API_KEY);
     const response = await fetch(url, {
       headers: { "X-Api-Key": process.env.RENTCAST_API_KEY },
     });
 
+    const body = await response.text();
+    console.log("[Rentcast] Status:", response.status);
+    console.log("[Rentcast] Headers:", JSON.stringify(Object.fromEntries(response.headers.entries())));
+    console.log("[Rentcast] Body:", body);
+
     if (!response.ok) {
-      const body = await response.text();
-      console.error("Rentcast error:", response.status, body);
-      return res.status(response.status).json({ error: "Rentcast API error" });
+      return res.status(response.status).json({ error: "Rentcast API error", status: response.status, detail: body });
     }
 
-    const data = await response.json();
-    // Rentcast returns an array; take the first match
+    const data = JSON.parse(body);
     const prop = Array.isArray(data) ? data[0] : data;
-    if (!prop) return res.status(404).json({ error: "Property not found" });
+    if (!prop) return res.status(404).json({ error: "Property not found", detail: "Rentcast returned empty result" });
+
+    console.log("[Rentcast] Mapped property:", JSON.stringify(prop, null, 2));
 
     res.json({
       address: prop.formattedAddress || prop.addressLine1 || address,
@@ -64,8 +70,8 @@ app.get("/api/property", async (req, res) => {
       yearBuilt: prop.yearBuilt || 0,
     });
   } catch (err) {
-    console.error("Rentcast fetch error:", err.message);
-    res.status(500).json({ error: "Failed to fetch property" });
+    console.error("[Rentcast] Fetch error:", err.message, err.stack);
+    res.status(500).json({ error: "Failed to fetch property", detail: err.message });
   }
 });
 
