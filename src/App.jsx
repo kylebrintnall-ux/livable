@@ -172,25 +172,13 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
   const canProceed = income && needs && selectedCats.length >= 1;
 
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", paddingBottom: 16 }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
         <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
           Does this home fit your life?
         </div>
-      </div>
-
-      {/* Free tier notice — compact single line */}
-      <div style={{
-        background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
-        borderRadius: 5, padding: "7px 10px", marginBottom: 14,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          3 free looks included
-        </div>
-        <div style={{ fontSize: 9, color: MUTED }}>$4.99/mo for unlimited</div>
       </div>
 
       {/* Income */}
