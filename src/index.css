@@ -50,9 +50,14 @@
   }
 }
 
-body {
+html, body {
   margin: 0;
   background: #cdd4b0;
+  overflow-x: hidden;
+}
+
+body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 h1,

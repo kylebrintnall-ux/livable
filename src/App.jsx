@@ -145,7 +145,7 @@ const inputStyle = {
   background: "rgba(255,255,255,0.5)",
   border: "1.5px solid rgba(100,90,60,0.22)",
   borderRadius: 4, padding: "9px 11px",
-  fontSize: 14, color: INK, fontFamily: font, outline: "none",
+  fontSize: 16, color: INK, fontFamily: font, outline: "none",
 };
 const btnPrimary = (disabled) => ({
   background: disabled ? "#b0aa90" : INK,
@@ -683,7 +683,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           display: "flex", flexDirection: "column", justifyContent: "flex-end",
           padding: "0 16px 14px",
         }}>
-          <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(250,245,232,0.4)", textTransform: "uppercase", marginBottom: 5 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(250,245,232,0.75)", textTransform: "uppercase", marginBottom: 5 }}>
             For Sale &nbsp;·&nbsp; Tap to expand
           </div>
           <div style={{ fontSize: 17, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
@@ -1504,10 +1504,11 @@ export default function App() {
     <div style={{
       background: BG,
       minHeight: "100dvh",
-      display: "flex", flexDirection: "column", alignItems: "center",
+      display: "flex", flexDirection: "column", alignItems: "stretch",
       padding: "16px 14px 32px",
       fontFamily: font,
       boxSizing: "border-box",
+      overflowX: "hidden",
       userSelect: "none", WebkitUserSelect: "none",
       overscrollBehavior: "none",
     }}>
