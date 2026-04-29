@@ -172,7 +172,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
   const canProceed = income && needs && selectedCats.length >= 1;
 
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", paddingBottom: 16 }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", flex: 1, display: "flex", flexDirection: "column" }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
@@ -230,12 +230,12 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
       </div>
 
-      {/* Lifestyle values */}
-      <div style={{ marginBottom: 14 }}>
+      {/* Lifestyle values — grows to fill remaining space */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", marginBottom: 14 }}>
         <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
           Top lifestyle values — tap in order · up to {MAX_CATS}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridTemplateRows: "repeat(4, 1fr)", gap: 5 }}>
           {CATS.map((cat) => {
             const rank = selectedCats.indexOf(cat.id);
             const selected = rank !== -1;
@@ -1503,6 +1503,7 @@ export default function App() {
   return (
     <div style={{
       background: BG,
+      minHeight: "100dvh",
       display: "flex", flexDirection: "column", alignItems: "center",
       padding: "16px 14px 32px",
       fontFamily: font,
