@@ -9,6 +9,8 @@ const HOUSING_COLOR = "#C8412A";
 const NEEDS_COLOR   = "#5a4e8a";
 const CAT_COLORS    = ["#3B7FC4","#4A9B6F","#E8A030","#D4505A","#3A9EA5","#C4963B","#7B5EA7","#D97B3A"];
 
+const MOBILE_MAX = 430;
+
 // ── Taper curve for stack-ranked tiles ────────────────────────────────────
 const TAPER = [0.30, 0.22, 0.17, 0.13, 0.10, 0.08];
 function taperWeights(n) {
@@ -142,8 +144,8 @@ const inputStyle = {
   width: "100%", boxSizing: "border-box",
   background: "rgba(255,255,255,0.5)",
   border: "1.5px solid rgba(100,90,60,0.22)",
-  borderRadius: 4, padding: "11px 13px",
-  fontSize: 15, color: INK, fontFamily: font, outline: "none",
+  borderRadius: 4, padding: "9px 11px",
+  fontSize: 14, color: INK, fontFamily: font, outline: "none",
 };
 const btnPrimary = (disabled) => ({
   background: disabled ? "#b0aa90" : INK,
@@ -170,70 +172,65 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
   const canProceed = income && needs && selectedCats.length >= 1;
 
   return (
-    <div style={{ width: "100%", maxWidth: 480, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
-      <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ fontSize: 34, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase", marginTop: 3 }}>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
+        <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
           Does this home fit your life?
         </div>
       </div>
 
-      {/* Free tier notice */}
+      {/* Free tier notice — compact single line */}
       <div style={{
-        background: "rgba(255,255,255,0.45)", border: `1px solid rgba(100,90,60,0.18)`,
-        borderRadius: 6, padding: "11px 14px", marginBottom: 22,
-        display: "flex", alignItems: "center", gap: 10,
+        background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
+        borderRadius: 5, padding: "7px 10px", marginBottom: 14,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <div style={{ fontSize: 18, flexShrink: 0 }}>&#127968;</div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>
-            3 free looks included
-          </div>
-          <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
-            Each address lookup or AI summary update counts as one look. Upgrade to unlimited for $4.99/mo.
-          </div>
+        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          3 free looks included
         </div>
+        <div style={{ fontSize: 9, color: MUTED }}>$4.99/mo for unlimited</div>
       </div>
 
       {/* Income */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
           Monthly take-home pay
         </div>
         <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 15 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 26 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
         </div>
       </div>
 
       {/* Basic needs */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Basic monthly needs — groceries, utilities, transport, insurance
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+          Monthly needs — groceries, utilities, transport
         </div>
         <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 15 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 26 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
         </div>
       </div>
 
       {/* Down payment */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Willing to put down — {downPct}%
-          {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 8 }}>+ PMI applies under 20%</span>}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+          Down payment — {downPct}%
+          {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 6 }}>PMI applies</span>}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {["5","10","15","20","25","30"].map(p => (
             <div
               key={p}
               onClick={() => setDownPct(p)}
               style={{
-                flex: 1, textAlign: "center", padding: "9px 0",
+                flex: 1, textAlign: "center", padding: "7px 0",
                 background: downPct === p ? INK : "rgba(255,255,255,0.45)",
                 border: `1.5px solid ${downPct === p ? INK : "rgba(100,90,60,0.2)"}`,
-                borderRadius: 4, fontSize: 11, fontWeight: "600",
+                borderRadius: 4, fontSize: 10, fontWeight: "600",
                 color: downPct === p ? CREAM : INK,
                 cursor: "pointer", fontFamily: font,
                 transition: "all 0.12s",
@@ -246,15 +243,12 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
       </div>
 
       {/* Lifestyle values */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Tap your top lifestyle values — in order of importance
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+          Top lifestyle values — tap in order · up to {MAX_CATS}
         </div>
-        <div style={{ fontSize: 10, color: MUTED, marginBottom: 10 }}>
-          First tap = most important. Up to {MAX_CATS}.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {CATS.map((cat, i) => {
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+          {CATS.map((cat) => {
             const rank = selectedCats.indexOf(cat.id);
             const selected = rank !== -1;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
@@ -265,16 +259,16 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
                 style={{
                   background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                   border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 6, padding: "10px 8px",
+                  borderRadius: 5, padding: "7px 4px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
                   transition: "all 0.12s",
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>{cat.label}</div>
+                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
                 {selected && (
-                  <div style={{ fontSize: 9, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length] }}>{rank + 1}</div>
+                  <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
                 )}
               </div>
             );
@@ -313,7 +307,7 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: 480, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       <div style={{ textAlign: "center", marginBottom: 36 }}>
         <div style={{ fontSize: 34, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
         <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase", marginTop: 3 }}>
@@ -495,10 +489,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     const el = containerRef.current;
     if (!el) return;
     const block = e => e.preventDefault();
-    ["touchstart","touchmove","touchend","wheel","gesturestart","gesturechange","gestureend"]
+    ["touchmove","wheel","gesturestart","gesturechange","gestureend"]
       .forEach(ev => el.addEventListener(ev, block, { passive: false }));
     return () => {
-      ["touchstart","touchmove","touchend","wheel","gesturestart","gesturechange","gestureend"]
+      ["touchmove","wheel","gesturestart","gesturechange","gestureend"]
         .forEach(ev => el.removeEventListener(ev, block));
     };
   }, []);
@@ -643,10 +637,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const surplus = inc - totalAllocated;
   const topCat = tiles.filter(t => !t.locked).sort((a,b) => b.value - a.value)[0];
   const getVerdict = () => {
-    if (housingPct <= 28) return { text: `This home fits your life. Housing takes ${housingPct.toFixed(0)}% of your income — your ${topCat?.label || "lifestyle"} budget stays healthy.`, color: "#4A9B6F" };
-    if (housingPct <= 35) return { text: `Manageable — but tight. Housing takes ${housingPct.toFixed(0)}%. Adjust the tiles to see what you'd need to trim.`, color: "#E8A030" };
-    if (housingPct <= 45) return { text: `This home will reshape your lifestyle. At ${housingPct.toFixed(0)}% of income, something meaningful has to give — drag the tiles to find out what.`, color: "#D97B3A" };
-    return { text: `Hard to sustain. Housing eats ${housingPct.toFixed(0)}% of your income. Unless your income grows, this house works against your life.`, color: "#C8412A" };
+    if (housingPct <= 28) return { text: `Fits your life. Housing takes ${housingPct.toFixed(0)}% — your ${topCat?.label || "lifestyle"} budget stays healthy.`, color: "#4A9B6F" };
+    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Drag tiles to see what to trim.`, color: "#E8A030" };
+    if (housingPct <= 45) return { text: `Stretched at ${housingPct.toFixed(0)}%. Something has to give — drag tiles to find out what.`, color: "#D97B3A" };
+    return { text: `Hard to sustain at ${housingPct.toFixed(0)}%. This house works against your life.`, color: "#C8412A" };
   };
   const verdict = getVerdict();
 
@@ -655,7 +649,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const [photoExpanded, setPhotoExpanded] = useState(false);
 
   return (
-    <div style={{ width: "100%", maxWidth: 780, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
 
       {/* Photo fullscreen modal */}
       {photoExpanded && (
@@ -687,7 +681,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         style={{
           borderRadius: 6, overflow: "hidden",
           marginBottom: 6, boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
-          position: "relative", height: 200, background: INK,
+          position: "relative", height: 180, background: INK,
           cursor: "pointer",
         }}
       >
@@ -704,11 +698,11 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(250,245,232,0.4)", textTransform: "uppercase", marginBottom: 5 }}>
             For Sale &nbsp;·&nbsp; Tap to expand
           </div>
-          <div style={{ fontSize: 17, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 17, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
             {property.address}
           </div>
           <div style={{ fontSize: 10, color: "rgba(250,245,232,0.5)", marginTop: 4, letterSpacing: "0.04em" }}>
-            ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds} bd &nbsp;·&nbsp; {property.baths} ba &nbsp;·&nbsp; {property.sqft.toLocaleString()} sqft &nbsp;·&nbsp; Built {property.yearBuilt}
+            ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds} bd &nbsp;·&nbsp; {property.baths} ba &nbsp;·&nbsp; {property.sqft.toLocaleString()} sf &nbsp;·&nbsp; Built {property.yearBuilt}
           </div>
         </div>
       </div>
@@ -720,9 +714,9 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         marginBottom: 6,
       }}>
         <div style={{ fontSize: 9, color: "rgba(250,245,232,0.45)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
-          Est. monthly cost
+          Est. monthly
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ fontSize: 16, fontWeight: "800", color: CREAM }}>
             ${Math.round(housingTile?.value || 0).toLocaleString()}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
           </div>
@@ -786,7 +780,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
       <div
         ref={containerRef}
         style={{
-          width: "100%", height: 300,
+          width: "100%", height: 280,
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -996,10 +990,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
 
       {/* Live verdict */}
       <div style={{
-        marginTop: 8, padding: "11px 14px", borderRadius: 5,
+        marginTop: 8, padding: "10px 12px", borderRadius: 5,
         background: `${verdict.color}14`,
         border: `1.5px solid ${verdict.color}55`,
-        display: "flex", alignItems: "flex-start", gap: 12,
+        display: "flex", alignItems: "flex-start", gap: 10,
       }}>
         <div style={{
           flexShrink: 0, background: verdict.color, borderRadius: 3,
@@ -1012,19 +1006,21 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
             {housingPct.toFixed(0)}%
           </div>
         </div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.55 }}>{verdict.text}</div>
+        <div style={{ fontSize: 11, color: INK, lineHeight: 1.55, minWidth: 0 }}>{verdict.text}</div>
       </div>
 
       {/* Legend */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 8, justifyContent: "center" }}>
-        {tiles.map(t => (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 7, height: 7, background: t.color, borderRadius: 1 }} />
-            <span style={{ fontSize: 8, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t.label}</span>
-            <span style={{ fontSize: 8, color: INK, fontFamily: "monospace", fontWeight: "700" }}>${Math.round(t.value).toLocaleString()}</span>
-            {t.locked && <span style={{ fontSize: 7, color: MUTED }}>FIXED</span>}
-          </div>
-        ))}
+      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "4px 10px" }}>
+        {tiles.map(t => {
+          const pct = (t.value / inc) * 100;
+          return (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+              <div style={{ width: 7, height: 7, background: t.color, borderRadius: 1, flexShrink: 0 }} />
+              <span style={{ fontSize: 8, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
+              <span style={{ fontSize: 8, color: INK, fontFamily: "monospace", fontWeight: "700", marginLeft: "auto", flexShrink: 0 }}>{pct.toFixed(0)}% · ${Math.round(t.value).toLocaleString()}</span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Usage counter */}
@@ -1035,9 +1031,9 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
       {/* Actions */}
       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
         <button
-          style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 20px" }}
+          style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
           onClick={onBack}
-        >← New Search</button>
+        >← New</button>
         <button
           style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
           onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
@@ -1270,7 +1266,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
   const shareRects = computeRects(tiles, SVG_W, SVG_H, SVG_GAP);
 
   return (
-    <div style={{ width: "100%", maxWidth: 540, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       <div id="livable-export-card" style={{
         background: CREAM, borderRadius: 8,
         boxShadow: "0 8px 40px rgba(0,0,0,0.15)",
@@ -1443,7 +1439,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-        <button style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 20px" }} onClick={onClose}>
+        <button style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }} onClick={onClose}>
           ← Back
         </button>
         <button
@@ -1520,11 +1516,11 @@ export default function App() {
     <div style={{
       background: BG, minHeight: "100vh",
       display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "28px 16px 48px",
+      padding: "16px 14px 32px",
       fontFamily: font,
+      boxSizing: "border-box",
       userSelect: "none", WebkitUserSelect: "none",
       overscrollBehavior: "none",
-      touchAction: screen === "map" ? "none" : "auto",
     }}>
       {showPaywall && <PaywallOverlay onClose={() => setShowPaywall(false)} />}
 
