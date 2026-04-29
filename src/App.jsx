@@ -1502,7 +1502,7 @@ export default function App() {
 
   return (
     <div style={{
-      background: BG, minHeight: "100vh",
+      background: BG,
       display: "flex", flexDirection: "column", alignItems: "center",
       padding: "16px 14px 32px",
       fontFamily: font,
