@@ -144,8 +144,8 @@ const inputStyle = {
   width: "100%", boxSizing: "border-box",
   background: "rgba(255,255,255,0.5)",
   border: "1.5px solid rgba(100,90,60,0.22)",
-  borderRadius: 4, padding: "11px 13px",
-  fontSize: 15, color: INK, fontFamily: font, outline: "none",
+  borderRadius: 4, padding: "9px 11px",
+  fontSize: 14, color: INK, fontFamily: font, outline: "none",
 };
 const btnPrimary = (disabled) => ({
   background: disabled ? "#b0aa90" : INK,
@@ -174,68 +174,63 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
   return (
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
-      <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ fontSize: 34, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase", marginTop: 3 }}>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
+        <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
           Does this home fit your life?
         </div>
       </div>
 
-      {/* Free tier notice */}
+      {/* Free tier notice — compact single line */}
       <div style={{
-        background: "rgba(255,255,255,0.45)", border: `1px solid rgba(100,90,60,0.18)`,
-        borderRadius: 6, padding: "11px 14px", marginBottom: 22,
-        display: "flex", alignItems: "center", gap: 10,
+        background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
+        borderRadius: 5, padding: "7px 10px", marginBottom: 14,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <div style={{ fontSize: 18, flexShrink: 0 }}>&#127968;</div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>
-            3 free looks included
-          </div>
-          <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
-            Each address lookup or AI summary update counts as one look. Upgrade to unlimited for $4.99/mo.
-          </div>
+        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          3 free looks included
         </div>
+        <div style={{ fontSize: 9, color: MUTED }}>$4.99/mo for unlimited</div>
       </div>
 
       {/* Income */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
           Monthly take-home pay
         </div>
         <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 15 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 26 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
         </div>
       </div>
 
       {/* Basic needs */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Basic monthly needs — groceries, utilities, transport, insurance
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+          Monthly needs — groceries, utilities, transport
         </div>
         <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 15 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 26 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
         </div>
       </div>
 
       {/* Down payment */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Willing to put down — {downPct}%
-          {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 8 }}>+ PMI applies under 20%</span>}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+          Down payment — {downPct}%
+          {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 6 }}>PMI applies</span>}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {["5","10","15","20","25","30"].map(p => (
             <div
               key={p}
               onClick={() => setDownPct(p)}
               style={{
-                flex: 1, textAlign: "center", padding: "9px 0",
+                flex: 1, textAlign: "center", padding: "7px 0",
                 background: downPct === p ? INK : "rgba(255,255,255,0.45)",
                 border: `1.5px solid ${downPct === p ? INK : "rgba(100,90,60,0.2)"}`,
-                borderRadius: 4, fontSize: 11, fontWeight: "600",
+                borderRadius: 4, fontSize: 10, fontWeight: "600",
                 color: downPct === p ? CREAM : INK,
                 cursor: "pointer", fontFamily: font,
                 transition: "all 0.12s",
@@ -248,15 +243,12 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
       </div>
 
       {/* Lifestyle values */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Tap your top lifestyle values — in order of importance
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+          Top lifestyle values — tap in order · up to {MAX_CATS}
         </div>
-        <div style={{ fontSize: 10, color: MUTED, marginBottom: 10 }}>
-          First tap = most important. Up to {MAX_CATS}.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {CATS.map((cat, i) => {
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+          {CATS.map((cat) => {
             const rank = selectedCats.indexOf(cat.id);
             const selected = rank !== -1;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
@@ -267,16 +259,16 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
                 style={{
                   background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                   border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 6, padding: "10px 8px",
+                  borderRadius: 5, padding: "7px 4px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
                   transition: "all 0.12s",
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>{cat.label}</div>
+                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
                 {selected && (
-                  <div style={{ fontSize: 9, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length] }}>{rank + 1}</div>
+                  <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
                 )}
               </div>
             );
@@ -1524,7 +1516,7 @@ export default function App() {
     <div style={{
       background: BG, minHeight: "100vh",
       display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "28px 16px 48px",
+      padding: "16px 14px 32px",
       fontFamily: font,
       boxSizing: "border-box",
       userSelect: "none", WebkitUserSelect: "none",
