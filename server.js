@@ -33,44 +33,44 @@ app.post("/api/summary", async (req, res) => {
   }
 });
 
-// ── GET /api/property — Rentcast property lookup ──────────────────────────
+// ── GET /api/property — Rentcast active listing lookup ────────────────────
 app.get("/api/property", async (req, res) => {
   const { address } = req.query;
   if (!address) return res.status(400).json({ error: "address is required" });
 
+  const headers = { "X-Api-Key": process.env.RENTCAST_API_KEY };
+  const encoded = encodeURIComponent(address);
+
   try {
-    const url = `https://api.rentcast.io/v1/properties?address=${encodeURIComponent(address)}`;
-    console.log("[Rentcast] Request URL:", url);
-    console.log("[Rentcast] API key present:", !!process.env.RENTCAST_API_KEY);
-    const response = await fetch(url, {
-      headers: { "X-Api-Key": process.env.RENTCAST_API_KEY },
-    });
+    // 1. Try active sale listing — gives current list price
+    const listingRes = await fetch(
+      `https://api.rentcast.io/v1/listings/sale?address=${encoded}&status=Active&limit=1`,
+      { headers }
+    );
+    console.log("[Rentcast] Listing status:", listingRes.status);
 
-    const body = await response.text();
-    console.log("[Rentcast] Status:", response.status);
-    console.log("[Rentcast] Headers:", JSON.stringify(Object.fromEntries(response.headers.entries())));
-    console.log("[Rentcast] Body:", body);
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: "Rentcast API error", status: response.status, detail: body });
+    if (listingRes.ok) {
+      const listings = await listingRes.json();
+      const listing = Array.isArray(listings) ? listings[0] : null;
+      console.log("[Rentcast] Listing result:", JSON.stringify(listing));
+      if (listing?.price) {
+        return res.json({
+          address: listing.formattedAddress || address,
+          price: listing.price,
+          beds: listing.bedrooms || 0,
+          baths: listing.bathrooms || 0,
+          sqft: listing.squareFootage || 0,
+          yearBuilt: listing.yearBuilt || 0,
+        });
+      }
     }
 
-    const data = JSON.parse(body);
-    const prop = Array.isArray(data) ? data[0] : data;
-    if (!prop) return res.status(404).json({ error: "Property not found", detail: "Rentcast returned empty result" });
-
-    console.log("[Rentcast] Mapped property:", JSON.stringify(prop, null, 2));
-
-    res.json({
-      address: prop.formattedAddress || prop.addressLine1 || address,
-      price: prop.price || prop.lastSalePrice || 0,
-      beds: prop.bedrooms || 0,
-      baths: prop.bathrooms || 0,
-      sqft: prop.squareFootage || 0,
-      yearBuilt: prop.yearBuilt || 0,
+    // 2. No active listing found
+    return res.status(404).json({
+      error: "No active listing found for this address. Try a property that's currently for sale.",
     });
   } catch (err) {
-    console.error("[Rentcast] Fetch error:", err.message, err.stack);
+    console.error("[Rentcast] Error:", err.message);
     res.status(500).json({ error: "Failed to fetch property", detail: err.message });
   }
 });
