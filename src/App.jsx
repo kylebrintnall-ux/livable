@@ -84,6 +84,16 @@ const CATS = [
   { id: "giving",        label: "Giving"        },
 ];
 
+// ── Essentials line-item fields ────────────────────────────────────────────
+const ESSENTIAL_FIELDS = [
+  { id: "savings",    label: "Savings",         placeholder: "500" },
+  { id: "healthcare", label: "Healthcare",      placeholder: "300" },
+  { id: "education",  label: "Education",       placeholder: "0"   },
+  { id: "groceries",  label: "Groceries",       placeholder: "600" },
+  { id: "transport",  label: "Gas / Transport", placeholder: "200" },
+  { id: "utilities",  label: "Utilities",       placeholder: "180" },
+];
+
 // ── Property fetch via backend (Rentcast API) ──────────────────────────────
 async function fetchProperty(address) {
   const res = await fetch(`/api/property?address=${encodeURIComponent(address)}`);
@@ -155,10 +165,10 @@ const btnPrimary = (disabled) => ({
 });
 
 // ── Screen: Onboarding ────────────────────────────────────────────────────
-function OnboardingScreen({ onDone, shareCount, useCount }) {
-  const [income, setIncome]       = useState("");
-  const [needs, setNeeds]         = useState("");
-  const [downPct, setDownPct]     = useState("10");
+function OnboardingScreen({ onDone }) {
+  const [income, setIncome]         = useState("");
+  const [essentials, setEssentials] = useState({});
+  const [downPct, setDownPct]       = useState("10");
   const [selectedCats, setSelected] = useState([]);
   const MAX_CATS = 5;
 
@@ -168,19 +178,17 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
     );
   };
 
-  const canProceed = income && needs && selectedCats.length >= 1;
+  const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const canProceed = income && essentialsTotal > 0 && selectedCats.length >= 1;
 
   return (
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
-          Does this home fit your life?
-        </div>
       </div>
 
-      {/* Free tier notice — compact single line */}
+      {/* Free tier notice */}
       <div style={{
         background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
         borderRadius: 5, padding: "7px 10px", marginBottom: 14,
@@ -199,18 +207,34 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
         <div style={{ position: "relative" }}>
           <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" inputMode="numeric" />
         </div>
       </div>
 
-      {/* Basic needs */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Monthly essentials — savings, healthcare, education, groceries, utilities, transport
+      {/* Essentials breakdown — 2-col grid */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+          Monthly essentials
         </div>
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {ESSENTIAL_FIELDS.map(f => (
+            <div key={f.id}>
+              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+                {f.label}
+              </div>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 14 }}>$</span>
+                <input
+                  style={{ ...inputStyle, padding: "9px 11px 9px 22px" }}
+                  placeholder={f.placeholder}
+                  value={essentials[f.id] || ""}
+                  onChange={e => setEssentials(prev => ({ ...prev, [f.id]: e.target.value }))}
+                  type="number"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -280,7 +304,13 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
 
       <button
         style={btnPrimary(!canProceed)}
-        onClick={() => canProceed && onDone({ income: parseFloat(income), needs: parseFloat(needs), downPct: parseFloat(downPct), cats: selectedCats })}
+        onClick={() => canProceed && onDone({
+          income: parseFloat(income),
+          essentialsTotal,
+          essentials,
+          downPct: parseFloat(downPct),
+          cats: selectedCats,
+        })}
       >
         Start Using Livable →
       </button>
@@ -289,7 +319,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
 }
 
 // ── Screen: Address Entry ─────────────────────────────────────────────────
-function AddressScreen({ usesLeft, onSearch, profile }) {
+function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -309,15 +339,50 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
-      <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <div style={{ fontSize: 34, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase", marginTop: 3 }}>
-          Does this home fit your life?
+    <div style={{
+      width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
+      minHeight: "100dvh",
+      display: "flex", flexDirection: "column",
+      padding: "16px 14px",
+      paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))",
+      boxSizing: "border-box",
+    }}>
+      {/* Header: wordmark + avatar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 22, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
+        <div
+          onClick={onEditProfile}
+          style={{
+            width: 40, height: 40, borderRadius: "50%",
+            background: "rgba(255,255,255,0.45)",
+            border: "1.5px solid rgba(100,90,60,0.22)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", position: "relative",
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+          </svg>
+          {usesLeft < 3 && (
+            <div style={{
+              position: "absolute", top: -2, right: -2,
+              width: 16, height: 16, borderRadius: "50%",
+              background: usesLeft === 0 ? "#C8412A" : INK,
+              color: CREAM, fontSize: 9, fontWeight: "800",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {usesLeft}
+            </div>
+          )}
         </div>
       </div>
 
-      <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "24px 20px", marginBottom: 16, boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
+      {/* Top spacer — pushes input to vertical center */}
+      <div style={{ flex: 1 }} />
+
+      {/* Address input block */}
+      <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "20px 18px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
         <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
           Paste or type an address
         </div>
@@ -332,49 +397,17 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
         {error && (
           <div style={{ fontSize: 11, color: HOUSING_COLOR, marginTop: 8 }}>{error}</div>
         )}
-        <button
-          style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }}
-          onClick={handleGo}
-        >
+        <button style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }} onClick={handleGo}>
           {loading ? "Looking up property…" : "See If It Fits →"}
         </button>
       </div>
 
-      {/* Usage counter */}
-      <div style={{ textAlign: "center", fontSize: 10, color: MUTED, letterSpacing: "0.08em" }}>
-        {usesLeft > 0
-          ? `${3 - usesLeft} of 3 free looks used`
-          : "3 of 3 free looks used"}
-      </div>
+      {/* Bottom spacer */}
+      <div style={{ flex: 1 }} />
 
-      {/* Profile summary */}
-      <div style={{ marginTop: 24, padding: "14px 16px", background: "rgba(255,255,255,0.3)", borderRadius: 6 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>Your Profile</div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.7 }}>
-          <span style={{ color: MUTED }}>Take-home</span> ${profile.income.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Essentials</span> ${profile.needs.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Down</span> {profile.downPct}%
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-          {profile.cats.map((id, i) => {
-            const cat = CATS.find(c => c.id === id);
-            return (
-              <div key={id} style={{
-                fontSize: 9, padding: "3px 8px",
-                background: `${CAT_COLORS[i % CAT_COLORS.length]}22`,
-                border: `1px solid ${CAT_COLORS[i % CAT_COLORS.length]}`,
-                borderRadius: 10, color: CAT_COLORS[i % CAT_COLORS.length],
-                fontWeight: "600", letterSpacing: "0.06em",
-              }}>
-                {i + 1} {cat?.label}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 9, color: MUTED, cursor: "pointer", letterSpacing: "0.1em", textDecoration: "underline" }}
-          onClick={() => window.location.reload()}>
-          Edit profile
-        </div>
+      {/* Free looks counter */}
+      <div style={{ textAlign: "center", fontSize: 10, color: MUTED, letterSpacing: "0.08em", paddingBottom: 4 }}>
+        {usesLeft > 0 ? `${3 - usesLeft} of 3 free looks used` : "3 of 3 free looks used"}
       </div>
     </div>
   );
@@ -449,7 +482,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     const insurance = Math.round(property.price * 0.005 / 12);
     const housingMonthly = payment + pmi + taxes + insurance;
 
-    const remaining = inc - housingMonthly - profile.needs;
+    const remaining = inc - housingMonthly - profile.essentialsTotal;
     const lifestylePool = Math.max(remaining, 100);
     const weights = taperWeights(profile.cats.length);
 
@@ -464,7 +497,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     });
 
     const rawNonHousing = [
-      { id: "needs", label: "Essentials", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
+      { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, inc * 0.03), locked: false, color: NEEDS_COLOR },
       ...catTiles,
     ];
     const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
@@ -1433,21 +1466,174 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
   );
 }
 
+// ── Profile editor overlay ─────────────────────────────────────────────────
+function ProfileEditorOverlay({ profile, onSave, onClose }) {
+  const [income, setIncome]         = useState(profile.income.toString());
+  const [essentials, setEssentials] = useState(profile.essentials || {});
+  const [downPct, setDownPct]       = useState(profile.downPct.toString());
+  const [selectedCats, setSelected] = useState(profile.cats);
+  const MAX_CATS = 5;
+
+  const toggleCat = (id) => {
+    setSelected(prev =>
+      prev.includes(id) ? prev.filter(c => c !== id) : prev.length < MAX_CATS ? [...prev, id] : prev
+    );
+  };
+
+  const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100,
+      background: BG,
+      overflowY: "auto",
+      paddingBottom: "env(safe-area-inset-bottom)",
+      fontFamily: font,
+    }}>
+      <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", padding: "20px 14px 40px", boxSizing: "border-box" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
+          <div onClick={onClose} style={{ fontSize: 28, color: INK, cursor: "pointer", lineHeight: 1, marginRight: 14 }}>×</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.22em", color: INK, textTransform: "uppercase", fontWeight: "700" }}>Edit Profile</div>
+        </div>
+
+        {/* Income */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+            Monthly take-home pay
+          </div>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+            <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" inputMode="numeric" />
+          </div>
+        </div>
+
+        {/* Essentials breakdown */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+            Monthly essentials
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {ESSENTIAL_FIELDS.map(f => (
+              <div key={f.id}>
+                <div style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+                  {f.label}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 14 }}>$</span>
+                  <input
+                    style={{ ...inputStyle, padding: "9px 11px 9px 22px" }}
+                    placeholder={f.placeholder}
+                    value={essentials[f.id] || ""}
+                    onChange={e => setEssentials(prev => ({ ...prev, [f.id]: e.target.value }))}
+                    type="number"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Down payment */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+            Down payment — {downPct}%
+            {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 6 }}>PMI applies</span>}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["5","10","15","20","25","30"].map(p => (
+              <div
+                key={p}
+                onClick={() => setDownPct(p)}
+                style={{
+                  flex: 1, textAlign: "center", padding: "7px 0",
+                  background: downPct === p ? INK : "rgba(255,255,255,0.45)",
+                  border: `1.5px solid ${downPct === p ? INK : "rgba(100,90,60,0.2)"}`,
+                  borderRadius: 4, fontSize: 10, fontWeight: "600",
+                  color: downPct === p ? CREAM : INK,
+                  cursor: "pointer", fontFamily: font,
+                  transition: "all 0.12s",
+                }}
+              >
+                {p}%
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Lifestyle priorities */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+            Top lifestyle priorities
+          </div>
+          <div style={{ fontSize: 8, color: MUTED, marginBottom: 6 }}>
+            Tap in order. First tap = most important. Up to {MAX_CATS}.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+            {CATS.map((cat) => {
+              const rank = selectedCats.indexOf(cat.id);
+              const selected = rank !== -1;
+              const atLimit = selectedCats.length >= MAX_CATS && !selected;
+              return (
+                <div
+                  key={cat.id}
+                  onClick={() => toggleCat(cat.id)}
+                  style={{
+                    background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
+                    border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
+                    borderRadius: 5, padding: "8px 6px",
+                    cursor: atLimit ? "default" : "pointer",
+                    opacity: atLimit ? 0.38 : 1,
+                    textAlign: "center", position: "relative",
+                    transition: "all 0.12s",
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
+                  {selected && (
+                    <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          style={btnPrimary(false)}
+          onClick={() => onSave({
+            income: parseFloat(income) || profile.income,
+            essentialsTotal,
+            essentials,
+            downPct: parseFloat(downPct),
+            cats: selectedCats,
+          })}
+        >
+          Save Changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [screen, setScreen]     = useState("onboarding");
-  const [profile, setProfile]   = useState(null);
-  const [property, setProperty] = useState(null);
-  const [useCount, setUseCount] = useState(0);
-  const [shareCount, setShareCount] = useState(0);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [shareData, setShareData]   = useState(null);
+  const [screen, setScreen]               = useState("onboarding");
+  const [profile, setProfile]             = useState(null);
+  const [property, setProperty]           = useState(null);
+  const [useCount, setUseCount]           = useState(0);
+  const [shareCount, setShareCount]       = useState(0);
+  const [showPaywall, setShowPaywall]     = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [shareData, setShareData]         = useState(null);
   const [cachedSummary, setCachedSummary] = useState(null);
   const [cachedSummaryKey, setCachedSummaryKey] = useState(null);
 
   const handleOnboarding = (prof) => { setProfile(prof); setScreen("address"); };
+
+  const handleProfileSave = (prof) => { setProfile(prof); setShowProfileEditor(false); };
 
   const handleSearch = (prop) => {
     if (useCount >= 3) { setShowPaywall(true); return; }
@@ -1475,12 +1661,15 @@ export default function App() {
   };
 
   const isMap = screen === "map";
+  const isAddress = screen === "address";
   return (
     <div style={{
       background: BG,
       ...(isMap
         ? { height: "100dvh", overflow: "hidden", padding: 0 }
-        : { minHeight: "100dvh", padding: "16px 14px 32px" }
+        : isAddress
+          ? { minHeight: "100dvh", padding: 0 }
+          : { minHeight: "100dvh", padding: "16px 14px 32px" }
       ),
       display: "flex", flexDirection: "column", alignItems: "stretch",
       fontFamily: font,
@@ -1489,9 +1678,16 @@ export default function App() {
       overscrollBehavior: "none",
     }}>
       {showPaywall && <PaywallOverlay onClose={() => setShowPaywall(false)} />}
+      {showProfileEditor && profile && (
+        <ProfileEditorOverlay
+          profile={profile}
+          onSave={handleProfileSave}
+          onClose={() => setShowProfileEditor(false)}
+        />
+      )}
 
-      {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} shareCount={shareCount} useCount={useCount} />}
-      {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} profile={profile} />}
+      {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
+      {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
       {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} />}
       {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
     </div>

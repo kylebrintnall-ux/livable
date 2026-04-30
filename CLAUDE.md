@@ -19,8 +19,8 @@ Deployed on Railway. Live at livable.app.
 - Max content width: `MOBILE_MAX = 430px`
 
 ## User flow
-1. **Onboarding** — monthly take-home, monthly essentials (savings, healthcare, education, groceries, utilities, transport), down payment %, up to 5 ranked lifestyle priorities
-2. **Address** — property address → Rentcast lookup
+1. **Onboarding** — monthly take-home, six individual essentials inputs (savings, healthcare, education, groceries, gas/transport, utilities), down payment %, up to 5 ranked lifestyle priorities. No slogan under wordmark.
+2. **Address** — wordmark + avatar icon (top). Centered address input. Free-looks counter (bottom). No profile panel. Avatar opens ProfileEditorOverlay.
 3. **Map** — interactive treemap (housing vs. lifestyle). Draggable edges. Live affordability signal.
 4. **Share** — Claude AI summary + static SVG treemap + PDF export
 
@@ -68,7 +68,13 @@ Vite dev proxy: `/api/*` → `http://localhost:3001` (set in `vite.config.js`).
 { id: "travel" }, { id: "dining" }, { id: "hobbies" }, { id: "social" },
 { id: "subscriptions" }, { id: "pets" }, { id: "fitness" }, { id: "style" }, { id: "giving" }
 ```
-Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentials (the `needs` tile, id: "needs", label: "Essentials", color: NEEDS_COLOR #5a4e8a).
+Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentials.
+
+## Essentials model
+Onboarding collects six individual dollar inputs: savings, healthcare, education, groceries, gas/transport, utilities. These are tracked as `profile.essentials` (object) and summed into `profile.essentialsTotal` (number). The treemap shows ONE Essentials tile (`id: "needs"`, label: "Essentials", color: NEEDS_COLOR #5a4e8a) whose value is `essentialsTotal`. The breakdown is for input granularity only.
+
+## Profile editor
+The `ProfileEditorOverlay` component renders all onboarding inputs pre-filled with current values (income, six essentials, down payment %, lifestyle categories). Opened via avatar icon top-right on AddressScreen. Saving calls `setProfile` in App root and closes the overlay. The wordmark on both onboarding and address screens has no slogan underneath.
 
 ## Key implementation notes
 - Treemap layout: housing tile pinned left, lifestyle tiles grid 3-per-row on right
