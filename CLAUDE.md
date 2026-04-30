@@ -19,7 +19,7 @@ Deployed on Railway. Live at livable.app.
 - Max content width: `MOBILE_MAX = 430px`
 
 ## User flow
-1. **Onboarding** — monthly take-home, basic needs, down payment %, up to 5 ranked lifestyle values
+1. **Onboarding** — monthly take-home, monthly essentials (savings, healthcare, education, groceries, utilities, transport), down payment %, up to 5 ranked lifestyle priorities
 2. **Address** — property address → Rentcast lookup
 3. **Map** — interactive treemap (housing vs. lifestyle). Draggable edges. Live affordability signal.
 4. **Share** — Claude AI summary + static SVG treemap + PDF export
@@ -63,6 +63,13 @@ npm start           # Express serves dist/ (Railway production)
 
 Vite dev proxy: `/api/*` → `http://localhost:3001` (set in `vite.config.js`).
 
+## Lifestyle categories (CATS) — discretionary only
+```js
+{ id: "travel" }, { id: "dining" }, { id: "hobbies" }, { id: "social" },
+{ id: "subscriptions" }, { id: "pets" }, { id: "fitness" }, { id: "style" }, { id: "giving" }
+```
+Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentials (the `needs` tile, id: "needs", label: "Essentials", color: NEEDS_COLOR #5a4e8a).
+
 ## Key implementation notes
 - Treemap layout: housing tile pinned left, lifestyle tiles grid 3-per-row on right
 - Edge drag: `dragRef` holds drag state; RAF-throttled `moveEdge`; proportional value transfer
@@ -70,8 +77,15 @@ Vite dev proxy: `/api/*` → `http://localhost:3001` (set in `vite.config.js`).
 - Scroll lock: treemap container blocks `touchmove`/`wheel`/gesture events only (not touchstart/touchend — those would break taps)
 - AI summary caching: keyed on address + housingPct + rate + downPct + tile values; cached in `cachedSummary` state
 
+## Platform strategy
+- PWA is for prototyping only. The real target is native iOS, then Android.
+- Do NOT over-invest in PWA-specific bug fixes. Patch what's needed for prototype testability, then move on.
+- Things that go away in native iOS: input auto-zoom, scroll lock weirdness, print sheet issues, viewport-height gymnastics, navigator.share fallbacks. Don't build elaborate workarounds for any of these.
+
 ## Fixed bugs / completed work
 - [x] Mobile layout: max width 430px, legend 2-col grid, photo card 2-line clamp, scroll lock scoped to treemap only
 - [x] Backend wiring: frontend calls `/api/*` (not Anthropic directly); server.js handles prompt construction
 - [x] Railway deploy: removed `--env-file` from start script (Railway injects env vars)
 - [x] Express 5 catch-all route compatibility
+- [x] iOS input zoom: all inputs use fontSize 16 (iOS zooms inputs below 16px)
+- [x] Onboarding model: CATS replaced with 9 discretionary-only lifestyle categories; "Needs" renamed "Essentials" throughout; onboarding label updated to clarify essentials includes savings/healthcare/education

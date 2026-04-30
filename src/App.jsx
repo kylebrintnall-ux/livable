@@ -73,18 +73,15 @@ function computeRects(tiles, W, H, gap) {
 
 // ── Category options ───────────────────────────────────────────────────────
 const CATS = [
-  { id: "travel",    label: "Travel"       },
-  { id: "dining",    label: "Dining"       },
-  { id: "savings",   label: "Savings"      },
-  { id: "fitness",   label: "Fitness"      },
-  { id: "family",    label: "Family"       },
-  { id: "health",    label: "Healthcare"   },
-  { id: "giving",    label: "Giving"       },
-  { id: "hobbies",   label: "Hobbies"      },
-  { id: "pets",      label: "Pets"         },
-  { id: "style",     label: "Style"        },
-  { id: "education", label: "Education"    },
-  { id: "social",    label: "Social"       },
+  { id: "travel",        label: "Travel"        },
+  { id: "dining",        label: "Dining"        },
+  { id: "hobbies",       label: "Hobbies"       },
+  { id: "social",        label: "Social"        },
+  { id: "subscriptions", label: "Subscriptions" },
+  { id: "pets",          label: "Pets"          },
+  { id: "fitness",       label: "Fitness"       },
+  { id: "style",         label: "Style"         },
+  { id: "giving",        label: "Giving"        },
 ];
 
 // ── Property fetch via backend (Rentcast API) ──────────────────────────────
@@ -128,7 +125,9 @@ Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words 
       body: JSON.stringify({ prompt }),
     });
     const json = await res.json();
-    return json.text || "";
+    const text = json.text || "";
+    console.log("Summary response:", text);
+    return text;
   } catch {
     return "Unable to generate summary. Please try again.";
   }
@@ -172,13 +171,25 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
   const canProceed = income && needs && selectedCats.length >= 1;
 
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", flex: 1, display: "flex", flexDirection: "column" }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
         <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
           Does this home fit your life?
         </div>
+      </div>
+
+      {/* Free tier notice — compact single line */}
+      <div style={{
+        background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
+        borderRadius: 5, padding: "7px 10px", marginBottom: 14,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          3 free looks included
+        </div>
+        <div style={{ fontSize: 9, color: MUTED }}>$4.99/mo for unlimited</div>
       </div>
 
       {/* Income */}
@@ -195,7 +206,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
       {/* Basic needs */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Monthly needs — groceries, utilities, transport
+          Monthly essentials — savings, healthcare, education, groceries, utilities, transport
         </div>
         <div style={{ position: "relative" }}>
           <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
@@ -230,12 +241,15 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
       </div>
 
-      {/* Lifestyle values — grows to fill remaining space */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", marginBottom: 14 }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Top lifestyle values — tap in order · up to {MAX_CATS}
+      {/* Lifestyle priorities */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+          Top lifestyle priorities
         </div>
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridTemplateRows: "repeat(4, 1fr)", gap: 5 }}>
+        <div style={{ fontSize: 8, color: MUTED, marginBottom: 6 }}>
+          Tap in order. First tap = most important. Up to {MAX_CATS}.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {CATS.map((cat) => {
             const rank = selectedCats.indexOf(cat.id);
             const selected = rank !== -1;
@@ -247,7 +261,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
                 style={{
                   background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                   border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 5, padding: "7px 4px",
+                  borderRadius: 5, padding: "8px 6px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
@@ -308,7 +322,7 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
           Paste or type an address
         </div>
         <input
-          style={{ ...inputStyle, fontSize: 14 }}
+          style={{ ...inputStyle }}
           placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
           value={address}
           onChange={e => setAddress(e.target.value)}
@@ -338,7 +352,7 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
         <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>Your Profile</div>
         <div style={{ fontSize: 11, color: INK, lineHeight: 1.7 }}>
           <span style={{ color: MUTED }}>Take-home</span> ${profile.income.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Needs</span> ${profile.needs.toLocaleString()}/mo ·{" "}
+          <span style={{ color: MUTED }}>Essentials</span> ${profile.needs.toLocaleString()}/mo ·{" "}
           <span style={{ color: MUTED }}>Down</span> {profile.downPct}%
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
@@ -419,10 +433,11 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const [hoveredEdge, setHoveredEdge]   = useState(null);
   const [activeSlider, setActiveSlider] = useState(null);
   const [longPressTimer, setLongPressTimer] = useState(null);
+  const [photoExpanded, setPhotoExpanded] = useState(false);
   const containerRef = useRef(null);
   const dragRef      = useRef(null);
   const rafRef       = useRef(null);
-  const GAP = 4;
+  const GAP = 3;
 
   const inc = profile.income;
 
@@ -449,7 +464,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     });
 
     const rawNonHousing = [
-      { id: "needs", label: "Needs", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
+      { id: "needs", label: "Essentials", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
       ...catTiles,
     ];
     const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
@@ -621,39 +636,34 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const rightW   = dims.w - rightX;
 
   // Dynamic verdict
-  const totalAllocated = tiles.reduce((s, t) => s + t.value, 0);
-  const surplus = inc - totalAllocated;
-  const topCat = tiles.filter(t => !t.locked).sort((a,b) => b.value - a.value)[0];
   const getVerdict = () => {
-    if (housingPct <= 28) return { text: `Fits your life. Housing takes ${housingPct.toFixed(0)}% — your ${topCat?.label || "lifestyle"} budget stays healthy.`, color: "#4A9B6F" };
-    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Drag tiles to see what to trim.`, color: "#E8A030" };
-    if (housingPct <= 45) return { text: `Stretched at ${housingPct.toFixed(0)}%. Something has to give — drag tiles to find out what.`, color: "#D97B3A" };
-    return { text: `Hard to sustain at ${housingPct.toFixed(0)}%. This house works against your life.`, color: "#C8412A" };
+    if (housingPct <= 28) return { text: `This home fits your life. Housing takes ${housingPct.toFixed(0)}% — your lifestyle budget stays healthy.`, color: "#4A9B6F" };
+    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Adjust the tiles to see what you'd trim.`, color: "#E8A030" };
+    if (housingPct <= 45) return { text: `Reshapes your lifestyle. At ${housingPct.toFixed(0)}%, something has to give — drag tiles to see what.`, color: "#D97B3A" };
+    return { text: `Hard to sustain. Housing eats ${housingPct.toFixed(0)}% — this works against your life.`, color: "#C8412A" };
   };
   const verdict = getVerdict();
 
   const streetViewUrl = `/api/streetview?address=${encodeURIComponent(property.address)}`;
 
-  const [photoExpanded, setPhotoExpanded] = useState(false);
-
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
+    <div style={{
+      width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
+      display: "flex", flexDirection: "column",
+      height: "100dvh",
+      padding: "8px 14px env(safe-area-inset-bottom, 8px)",
+      boxSizing: "border-box",
+      gap: 6,
+    }}>
 
       {/* Photo fullscreen modal */}
       {photoExpanded && (
         <div
           onClick={() => setPhotoExpanded(false)}
-          style={{
-            position: "fixed", inset: 0, zIndex: 200,
-            background: "rgba(10,8,4,0.95)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(10,8,4,0.95)", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
           <div style={{ width: "100%", maxWidth: 700, padding: 20 }}>
-            <div style={{
-              borderRadius: 8, overflow: "hidden",
-              height: 320, background: "#2e2a18",
-            }}>
+            <div style={{ borderRadius: 8, overflow: "hidden", height: 320, background: "#2e2a18" }}>
               <img src={streetViewUrl} alt={property.address} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
             <div style={{ textAlign: "center", marginTop: 14, fontSize: 10, color: "rgba(250,245,232,0.4)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
@@ -663,68 +673,26 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         </div>
       )}
 
-      {/* Property photo card */}
-      <div
-        onClick={() => setPhotoExpanded(true)}
-        style={{
-          borderRadius: 6, overflow: "hidden",
-          marginBottom: 6, boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
-          position: "relative", height: 180, background: INK,
-          cursor: "pointer",
-        }}
-      >
-        <img src={streetViewUrl} alt={property.address} style={{
-          position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-        }} />
-
-        <div style={{
-          position: "absolute", inset: 0,
-          background: "linear-gradient(to top, rgba(18,16,8,0.97) 0%, rgba(18,16,8,0.2) 50%, transparent 100%)",
-          display: "flex", flexDirection: "column", justifyContent: "flex-end",
-          padding: "0 16px 14px",
-        }}>
-          <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(250,245,232,0.75)", textTransform: "uppercase", marginBottom: 5 }}>
-            For Sale &nbsp;·&nbsp; Tap to expand
-          </div>
-          <div style={{ fontSize: 17, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
-            {property.address}
-          </div>
-          <div style={{ fontSize: 10, color: "rgba(250,245,232,0.5)", marginTop: 4, letterSpacing: "0.04em" }}>
-            ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds} bd &nbsp;·&nbsp; {property.baths} ba &nbsp;·&nbsp; {property.sqft.toLocaleString()} sf &nbsp;·&nbsp; Built {property.yearBuilt}
-          </div>
-        </div>
-      </div>
-
-      {/* Property cost bar */}
-      <div style={{
-        background: INK, borderRadius: 4, padding: "8px 14px",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        marginBottom: 6,
-      }}>
-        <div style={{ fontSize: 9, color: "rgba(250,245,232,0.45)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
-          Est. monthly
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <div style={{ fontSize: 16, fontWeight: "800", color: CREAM }}>
-            ${Math.round(housingTile?.value || 0).toLocaleString()}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
-          </div>
-          <div style={{ fontSize: 9, color: "rgba(250,245,232,0.4)", letterSpacing: "0.06em" }}>
-            {rate}% &nbsp;·&nbsp; {downPct}% down{downPct < 20 ? " · PMI" : ""}
-          </div>
-        </div>
-      </div>
-
-      {/* Assumptions drawer */}
-      <div style={{ marginBottom: 6 }}>
+      {/* Assumptions overlay */}
+      {showAssumptions && (
         <div
-          onClick={() => setShowAssumptions(v => !v)}
-          style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", cursor: "pointer", textAlign: "right", paddingRight: 2 }}
+          onClick={() => setShowAssumptions(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(20,18,10,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
         >
-          {showAssumptions ? "▲" : "▼"} Adjust rate & down payment
-        </div>
-        {showAssumptions && (
-          <div style={{ background: "rgba(255,255,255,0.4)", borderRadius: 6, padding: "14px 16px", marginTop: 6 }}>
-            <div style={{ marginBottom: 12 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: MOBILE_MAX,
+              background: BG, borderRadius: "14px 14px 0 0",
+              padding: "20px 18px",
+              paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase" }}>Adjust assumptions</div>
+              <div onClick={() => setShowAssumptions(false)} style={{ fontSize: 20, color: MUTED, cursor: "pointer", lineHeight: 1, padding: "2px 6px" }}>×</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                 <span style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase" }}>30yr fixed rate</span>
                 <span style={{ fontSize: 11, fontWeight: "700", color: INK }}>{rate.toFixed(2)}%</span>
@@ -734,17 +702,14 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 style={{ width: "100%", accentColor: INK }}
               />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: MUTED, marginTop: 2 }}>
-                <span>3%</span>
-                <span style={{ color: "#4A9B6F" }}>Current: {CURRENT_RATE}%</span>
-                <span>12%</span>
+                <span>3%</span><span style={{ color: "#4A9B6F" }}>Current: {CURRENT_RATE}%</span><span>12%</span>
               </div>
             </div>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                 <span style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase" }}>Down payment</span>
                 <span style={{ fontSize: 11, fontWeight: "700", color: INK }}>
-                  {downPct}%
-                  {downPct < 20 && <span style={{ fontSize: 8, color: "#D97B3A", marginLeft: 4 }}>PMI</span>}
+                  {downPct}%{downPct < 20 && <span style={{ fontSize: 8, color: "#D97B3A", marginLeft: 4 }}>PMI</span>}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
@@ -754,21 +719,73 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                     background: downPct === parseFloat(p) ? INK : "rgba(255,255,255,0.5)",
                     border: `1.5px solid ${downPct === parseFloat(p) ? INK : "rgba(100,90,60,0.2)"}`,
                     borderRadius: 3, fontSize: 10, fontWeight: "600",
-                    color: downPct === parseFloat(p) ? CREAM : INK,
-                    cursor: "pointer",
+                    color: downPct === parseFloat(p) ? CREAM : INK, cursor: "pointer",
                   }}>{p}%</div>
                 ))}
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Property photo card — 110px, no FOR SALE label */}
+      <div
+        onClick={() => setPhotoExpanded(true)}
+        style={{
+          borderRadius: 6, overflow: "hidden",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
+          position: "relative", height: 110, background: INK,
+          cursor: "pointer", flexShrink: 0,
+        }}
+      >
+        <img src={streetViewUrl} alt={property.address} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "linear-gradient(to top, rgba(18,16,8,0.97) 0%, rgba(18,16,8,0.15) 60%, transparent 100%)",
+          display: "flex", flexDirection: "column", justifyContent: "flex-end",
+          padding: "0 14px 10px",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
+            {property.address}
+          </div>
+          <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 3, letterSpacing: "0.04em" }}>
+            ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds}bd &nbsp;·&nbsp; {property.baths}ba &nbsp;·&nbsp; {property.sqft.toLocaleString()}sf &nbsp;·&nbsp; {property.yearBuilt}
+          </div>
+        </div>
       </div>
 
-      {/* Treemap */}
+      {/* Cost bar — merged with Adjust chip */}
+      <div style={{
+        background: INK, borderRadius: 4, padding: "7px 12px",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        flexShrink: 0,
+      }}>
+        <div style={{ fontSize: 9, color: "rgba(250,245,232,0.45)", letterSpacing: "0.14em", textTransform: "uppercase" }}>Est. monthly</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 16, fontWeight: "800", color: CREAM }}>
+            ${Math.round(housingTile?.value || 0).toLocaleString()}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
+          </div>
+          <div
+            onClick={() => setShowAssumptions(true)}
+            style={{
+              fontSize: 8, color: "rgba(250,245,232,0.75)",
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              borderRadius: 3, padding: "3px 7px",
+              letterSpacing: "0.1em", textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            Adjust
+          </div>
+        </div>
+      </div>
+
+      {/* Treemap — fills remaining space */}
       <div
         ref={containerRef}
         style={{
-          width: "100%", height: 280,
+          flex: 1,
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -781,18 +798,18 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           const pct = (tile.value / inc) * 100;
           const pad = rect.w < 50 ? 5 : 10;
 
-          const labelChars = tile.label.length;
-          const estimatedLabelW = labelChars * 6.5;
-          const useVertical = estimatedLabelW > (rect.w - pad * 2 - 4) && rect.h > 55;
+          // Label sizing uses both dimensions; fall back to vertical only at min readable size
+          const labelSizeRaw = Math.min(rect.w / 9, rect.h / 11, 10);
+          const labelSize = Math.max(7, labelSizeRaw);
+          const labelClips = (tile.label.length * labelSize * 0.65) > (rect.w - pad * 2);
+          const useVertical = labelClips && labelSizeRaw <= 7 && rect.h > 55;
 
-          const labelSize = Math.max(7, Math.min(10, rect.w / 8));
-          const pctSize   = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
-          const moSize    = Math.max(6, Math.min(10, rect.w / 9));
-          const showMo    = rect.h > (labelSize + pctSize + moSize + 18);
+          const pctSize = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
+          const moSize  = Math.max(6, Math.min(10, rect.w / 9));
+          const showMo  = rect.h > (labelSize + pctSize + moSize + 18);
 
-          const vLabelSize = Math.max(7, Math.min(10, rect.h / 10));
-          const vPctSize  = Math.max(9, Math.min(18, rect.w / 3.5));
-          const vMoSize   = Math.max(7, Math.min(9, rect.w / 4));
+          const vLabelSize = Math.max(7, Math.min(9, rect.w / 5));
+          const vPctSize   = Math.max(9, Math.min(18, rect.w / 3.5));
 
           return (
             <div
@@ -808,66 +825,41 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 left: rect.x, top: rect.y,
                 width: Math.max(0, rect.w), height: Math.max(0, rect.h),
                 background: tile.color,
+                borderRadius: 8,
                 transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
                 cursor: tile.locked ? "default" : "grab",
               }}
             >
-              {tile.locked && !useVertical && rect.w > 60 && (
-                <div style={{
-                  position: "absolute", top: 5, right: 7,
-                  fontSize: 7, letterSpacing: "0.12em",
-                  color: "rgba(252,246,224,0.45)", textTransform: "uppercase",
-                }}>FIXED</div>
+              {tile.locked && rect.w > 60 && !useVertical && (
+                <div style={{ position: "absolute", top: 5, right: 7, fontSize: 7, letterSpacing: "0.12em", color: "rgba(252,246,224,0.45)", textTransform: "uppercase" }}>FIXED</div>
               )}
 
               {useVertical ? (
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "flex-start", padding: `${pad}px` }}>
-                  <div style={{ fontSize: vPctSize, fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
-                    {pct.toFixed(0)}%
-                  </div>
-                  {rect.w > 30 && rect.h > 80 && (
-                    <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
-                      ${Math.round(tile.value).toLocaleString()}/mo
-                    </div>
-                  )}
+                // Label on left (vertical-lr), percentage centered in remaining space — no collision
+                <div style={{ position: "absolute", inset: 0, display: "flex", padding: `${pad}px` }}>
                   <div style={{
-                    position: "absolute",
-                    top: pad, right: pad,
+                    writingMode: "vertical-lr",
                     fontSize: vLabelSize, fontWeight: "700",
-                    letterSpacing: "0.1em", textTransform: "uppercase",
-                    color: "rgba(252,246,224,0.82)",
-                    writingMode: "vertical-rl",
-                    textOrientation: "mixed",
-                    transform: "rotate(180deg)",
-                    whiteSpace: "nowrap",
-                    maxHeight: rect.h - pad * 2,
-                    overflow: "hidden",
+                    letterSpacing: "0.06em", textTransform: "uppercase",
+                    color: "rgba(252,246,224,0.75)",
+                    overflow: "hidden", marginRight: 3, flexShrink: 0,
                     textShadow: "0 1px 3px rgba(0,0,0,0.35)",
                   }}>
                     {tile.label}
                   </div>
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ fontSize: vPctSize, fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                      {pct.toFixed(0)}%
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <div style={{
-                  position: "absolute",
-                  top: pad, left: pad, right: pad,
-                  color: "rgba(252,246,224,0.96)",
-                  textShadow: "0 1px 3px rgba(0,0,0,0.35)",
-                  overflow: "hidden",
-                }}>
-                  <div style={{
-                    fontSize: labelSize, letterSpacing: "0.12em",
-                    textTransform: "uppercase", fontWeight: "600",
-                    marginBottom: 2, whiteSpace: "nowrap",
-                    overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82,
-                  }}>
+                <div style={{ position: "absolute", top: pad, left: pad, right: pad, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+                  <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>
                     {tile.label}
                   </div>
-                  <div style={{
-                    fontSize: pctSize, fontWeight: "800",
-                    lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap",
-                  }}>
+                  <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
                     {pct.toFixed(0)}%
                   </div>
                   {showMo && (
@@ -917,11 +909,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 pointerEvents: "none", transition: "background 0.15s",
               }} />
               {!isV && (
-                <div style={{
-                  position: "absolute",
-                  background: isActive ? "rgba(252,246,224,0.98)" : "rgba(252,246,224,0.6)",
-                  borderRadius: 6, width: 40, height: 6, pointerEvents: "none",
-                }} />
+                <div style={{ position: "absolute", background: isActive ? "rgba(252,246,224,0.98)" : "rgba(252,246,224,0.6)", borderRadius: 6, width: 40, height: 6, pointerEvents: "none" }} />
               )}
               {isV && (isHovered || isActive) && (
                 <div style={{ position: "absolute", display: "flex", flexDirection: "column", gap: 4, pointerEvents: "none" }}>
@@ -955,9 +943,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 9, color: "rgba(252,246,224,0.5)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
-                      {tile.label}
-                    </div>
+                    <div style={{ fontSize: 9, color: "rgba(252,246,224,0.5)", letterSpacing: "0.16em", textTransform: "uppercase" }}>{tile.label}</div>
                     <div style={{ marginTop: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: "700", color: tile.color }}>{pct.toFixed(1)}%</span>
                       <span style={{ fontSize: 9, color: "rgba(252,246,224,0.4)", marginLeft: 8 }}>${Math.round(tile.value).toLocaleString()}/mo</span>
@@ -976,48 +962,24 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         })()}
       </div>
 
-      {/* Live verdict */}
+      {/* Live verdict — single line, no % subtitle in badge */}
       <div style={{
-        marginTop: 8, padding: "10px 12px", borderRadius: 5,
+        padding: "8px 10px", borderRadius: 6,
         background: `${verdict.color}14`,
         border: `1.5px solid ${verdict.color}55`,
-        display: "flex", alignItems: "flex-start", gap: 10,
+        display: "flex", alignItems: "center", gap: 8,
+        flexShrink: 0,
       }}>
-        <div style={{
-          flexShrink: 0, background: verdict.color, borderRadius: 3,
-          padding: "4px 10px", marginTop: 1,
-        }}>
-          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+        <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
+          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
             {signal.label}
           </div>
-          <div style={{ fontSize: 8, color: "rgba(252,246,224,0.7)", marginTop: 1 }}>
-            {housingPct.toFixed(0)}%
-          </div>
         </div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.55, minWidth: 0 }}>{verdict.text}</div>
+        <div style={{ fontSize: 11, color: INK, lineHeight: 1.4, minWidth: 0, flex: 1 }}>{verdict.text}</div>
       </div>
 
-      {/* Legend */}
-      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "4px 10px" }}>
-        {tiles.map(t => {
-          const pct = (t.value / inc) * 100;
-          return (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-              <div style={{ width: 7, height: 7, background: t.color, borderRadius: 1, flexShrink: 0 }} />
-              <span style={{ fontSize: 8, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
-              <span style={{ fontSize: 8, color: INK, fontFamily: "monospace", fontWeight: "700", marginLeft: "auto", flexShrink: 0 }}>{pct.toFixed(0)}% · ${Math.round(t.value).toLocaleString()}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Usage counter */}
-      <div style={{ textAlign: "center", marginTop: 6, fontSize: 9, color: useCount >= 3 ? "#C8412A" : MUTED, letterSpacing: "0.1em" }}>
-        {useCount} of 3 free looks used{useCount >= 3 ? " · Upgrade for unlimited →" : ""}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+      {/* Actions — marginTop auto pins to bottom of flex column */}
+      <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
         <button
           style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
           onClick={onBack}
@@ -1303,7 +1265,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (!fitsH && !useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h/2 + pctSize*0.35}
                         fontSize={Math.min(pctSize, rect.h * 0.4)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1317,7 +1279,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h - pad - moSize - 2}
                         fontSize={Math.min(pctSize, rect.w * 0.6)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1344,7 +1306,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
                 return (
                   <g key={rect.id}>
-                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} />
+                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
                     <text x={rect.x + pad} y={rect.y + pad + labelSize}
                       fontSize={labelSize} fill="rgba(252,246,224,0.82)"
                       fontFamily="Futura, Century Gothic, sans-serif" fontWeight="600">
@@ -1373,26 +1335,35 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 animation: cachedSummary ? "none" : "livable-reveal 0.6s cubic-bezier(0.16,1,0.3,1) both",
                 overflow: "hidden",
               }}>
-                {paragraphs.map((p, i) => {
-                const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
-                if (boldMatch) {
+                {paragraphs.length > 0 ? paragraphs.map((p, i) => {
+                  const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
+                  if (boldMatch) {
+                    return (
+                      <div key={i} style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+                          {boldMatch[1]}
+                        </div>
+                        <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
+                          {boldMatch[2]}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={i} style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                        {boldMatch[1]}
-                      </div>
-                      <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                        {boldMatch[2]}
-                      </div>
+                    <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
+                      {p.replace(/\*\*/g, "")}
                     </div>
                   );
-                }
-                return (
-                  <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                    {p.replace(/\*\*/g, "")}
+                }) : (
+                  <div style={{
+                    background: "rgba(200,65,42,0.08)",
+                    border: "1px solid rgba(200,65,42,0.3)",
+                    borderRadius: 6, padding: "12px 14px",
+                    fontSize: 11, color: INK, lineHeight: 1.5,
+                  }}>
+                    We couldn't generate the summary right now. The math and breakdown below are still accurate.
                   </div>
-                );
-              })}
+                )}
               </div>
             ) : null}
           </div>
@@ -1432,24 +1403,27 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
         </button>
         <button
           style={{ ...btnPrimary(false), background: INK, flex: 1 }}
-          onClick={() => {
-            const styleId = "livable-print-style";
-            if (!document.getElementById(styleId)) {
-              const style = document.createElement("style");
-              style.id = styleId;
-              style.innerHTML = `
-                @media print {
-                  body > * { display: none !important; }
-                  #livable-export-card { display: block !important; }
-                  #livable-export-card { position: fixed; top: 0; left: 0; width: 100%; }
-                  @page { margin: 0.5in; size: letter portrait; }
-                }
-              `;
-              document.head.appendChild(style);
+          onClick={async () => {
+            try {
+              const res = await fetch("/api/pdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ property, tiles, signal, housingPct, rate, downPct, summary, income: inc }),
+              });
+              const blob = await res.blob();
+              const file = new File([blob], "livable-summary.pdf", { type: "application/pdf" });
+              if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "LIVABLE", text: `${property.address} — does this home fit your life?` });
+              } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = "livable-summary.pdf"; a.click();
+                URL.revokeObjectURL(url);
+              }
+            } catch (e) {
+              console.error("PDF export failed:", e);
+              alert("Could not generate PDF. Please try again.");
             }
-            const card = document.getElementById("livable-export-card");
-            if (card) card.style.display = "block";
-            window.print();
           }}
         >
           Export as PDF ↓
@@ -1500,15 +1474,17 @@ export default function App() {
     setScreen("share");
   };
 
+  const isMap = screen === "map";
   return (
     <div style={{
       background: BG,
-      minHeight: "100dvh",
+      ...(isMap
+        ? { height: "100dvh", overflow: "hidden", padding: 0 }
+        : { minHeight: "100dvh", padding: "16px 14px 32px" }
+      ),
       display: "flex", flexDirection: "column", alignItems: "stretch",
-      padding: "16px 14px 32px",
       fontFamily: font,
       boxSizing: "border-box",
-      overflowX: "hidden",
       userSelect: "none", WebkitUserSelect: "none",
       overscrollBehavior: "none",
     }}>

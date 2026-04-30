@@ -3,6 +3,34 @@ import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import React from "react";
+import { Document, Page, View, Text, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+
+// ── PDF styles ─────────────────────────────────────────────────────────────
+const PDF_INK  = "#1e1a0e";
+const PDF_CREAM = "#faf5e8";
+const PDF_MUTED = "#7a6a44";
+
+const pdfS = StyleSheet.create({
+  page:       { padding: 40, backgroundColor: PDF_CREAM, fontFamily: "Helvetica" },
+  header:     { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.1)" },
+  brand:      { fontSize: 22, fontWeight: "bold", color: PDF_INK },
+  tagline:    { fontSize: 7, color: PDF_MUTED, marginTop: 3, letterSpacing: 1.5 },
+  badge:      { borderRadius: 4, paddingVertical: 5, paddingHorizontal: 11 },
+  badgeLabel: { fontSize: 9, fontWeight: "bold", color: PDF_CREAM, letterSpacing: 0.8 },
+  badgePct:   { fontSize: 7, color: "rgba(250,245,232,0.8)", marginTop: 1 },
+  address:    { fontSize: 14, fontWeight: "bold", color: PDF_INK, marginBottom: 3 },
+  meta:       { fontSize: 9, color: PDF_MUTED, marginBottom: 18 },
+  secLabel:   { fontSize: 7, letterSpacing: 1.8, color: PDF_MUTED, textTransform: "uppercase", marginBottom: 7, marginTop: 16 },
+  para:       { fontSize: 10, color: PDF_INK, lineHeight: 1.65, marginBottom: 10 },
+  paraHead:   { fontSize: 8, fontWeight: "bold", color: PDF_INK, letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 },
+  row:        { flexDirection: "row", alignItems: "center", marginBottom: 5 },
+  swatch:     { width: 8, height: 8, borderRadius: 2, marginRight: 8 },
+  rowLabel:   { fontSize: 9, color: PDF_INK, flex: 1 },
+  rowPct:     { fontSize: 9, color: PDF_MUTED, width: 36, textAlign: "right" },
+  rowAmt:     { fontSize: 9, fontWeight: "bold", color: PDF_INK, width: 72, textAlign: "right" },
+  footer:     { position: "absolute", bottom: 24, left: 40, right: 40, textAlign: "center", fontSize: 7, color: "rgba(0,0,0,0.22)", letterSpacing: 1.5 },
+});
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +58,68 @@ app.post("/api/summary", async (req, res) => {
   } catch (err) {
     console.error("Anthropic error:", err.message);
     res.status(500).json({ error: "Failed to generate summary" });
+  }
+});
+
+// ── POST /api/pdf — generate PDF report ───────────────────────────────────
+app.post("/api/pdf", async (req, res) => {
+  const { property, tiles, signal, housingPct, rate, downPct, summary, income } = req.body;
+  if (!property || !tiles || !signal) return res.status(400).json({ error: "Missing required fields" });
+
+  const h = React.createElement;
+  const paragraphs = summary ? summary.split("\n\n").filter(Boolean) : [];
+  const housingMonthly = Math.round((tiles.find(t => t.id === "housing")?.value) || 0);
+
+  const summaryChildren = paragraphs.length > 0 ? [
+    h(Text, { key: "sl", style: pdfS.secLabel }, "AI SUMMARY"),
+    ...paragraphs.map((p, i) => {
+      const m = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
+      return m
+        ? h(View, { key: `p${i}`, style: { marginBottom: 10 } },
+            h(Text, { style: pdfS.paraHead }, m[1]),
+            h(Text, { style: pdfS.para }, m[2])
+          )
+        : h(Text, { key: `p${i}`, style: pdfS.para }, p.replace(/\*\*/g, ""));
+    }),
+  ] : [];
+
+  const children = [
+    h(View, { style: pdfS.header },
+      h(View, null,
+        h(Text, { style: pdfS.brand }, "LIVABLE"),
+        h(Text, { style: pdfS.tagline }, "HOME · BUDGET · LIFE")
+      ),
+      h(View, { style: [pdfS.badge, { backgroundColor: signal.color }] },
+        h(Text, { style: pdfS.badgeLabel }, signal.label.toUpperCase()),
+        h(Text, { style: pdfS.badgePct }, `${Number(housingPct).toFixed(0)}% of income`)
+      )
+    ),
+    h(Text, { style: pdfS.address }, property.address),
+    h(Text, { style: pdfS.meta },
+      `$${property.price.toLocaleString("en-US")} list price · ${property.beds}bd ${property.baths}ba · $${housingMonthly.toLocaleString("en-US")}/mo est. · ${rate}% · ${downPct}% down`
+    ),
+    ...summaryChildren,
+    h(Text, { style: pdfS.secLabel }, `MONTHLY BREAKDOWN · $${Number(income).toLocaleString("en-US")} TAKE-HOME`),
+    ...tiles.map((t, i) =>
+      h(View, { key: `t${i}`, style: pdfS.row },
+        h(View, { style: [pdfS.swatch, { backgroundColor: t.color }] }),
+        h(Text, { style: pdfS.rowLabel }, `${t.label}${t.locked ? " — Fixed" : ""}`),
+        h(Text, { style: pdfS.rowPct }, `${((t.value / income) * 100).toFixed(1)}%`),
+        h(Text, { style: pdfS.rowAmt }, `$${Math.round(t.value).toLocaleString("en-US")}/mo`)
+      )
+    ),
+    h(Text, { style: pdfS.footer }, "Generated with LIVABLE · livable.app"),
+  ];
+
+  try {
+    const doc = h(Document, null, h(Page, { size: "A4", style: pdfS.page }, ...children));
+    const buffer = await renderToBuffer(doc);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", 'attachment; filename="livable-summary.pdf"');
+    res.send(buffer);
+  } catch (err) {
+    console.error("PDF generation error:", err.message);
+    res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
 

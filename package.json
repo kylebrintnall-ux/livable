@@ -14,17 +14,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "@react-pdf/renderer": "^4.5.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.1.2",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
