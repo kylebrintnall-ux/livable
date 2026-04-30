@@ -61,8 +61,10 @@ function computeRects(tiles, W, H, gap) {
   rows.forEach((row, ri) => {
     const rowH = (rowTotals[ri] / grandTotal) * (H - (rows.length - 1) * g);
     let rx = rightX;
-    row.forEach(tile => {
-      const w = (tile.value / rowTotals[ri]) * (rightW - (row.length - 1) * g);
+    row.forEach((tile, ti) => {
+      const w = ti === row.length - 1
+        ? (rightX + rightW) - rx
+        : (tile.value / rowTotals[ri]) * (rightW - (row.length - 1) * g);
       rects.push({ id: tile.id, x: rx, y: ry, w, h: rowH });
       rx += w + g;
     });
@@ -73,15 +75,15 @@ function computeRects(tiles, W, H, gap) {
 
 // ── Category options ───────────────────────────────────────────────────────
 const CATS = [
-  { id: "travel",        label: "Travel"        },
-  { id: "dining",        label: "Dining"        },
-  { id: "hobbies",       label: "Hobbies"       },
-  { id: "social",        label: "Social"        },
-  { id: "subscriptions", label: "Subscriptions" },
-  { id: "pets",          label: "Pets"          },
-  { id: "fitness",       label: "Fitness"       },
-  { id: "style",         label: "Style"         },
-  { id: "giving",        label: "Giving"        },
+  { id: "travel",        label: "Travel",        shortLabel: "Travel"  },
+  { id: "dining",        label: "Dining",        shortLabel: "Dining"  },
+  { id: "hobbies",       label: "Hobbies",       shortLabel: "Hobbies" },
+  { id: "social",        label: "Social",        shortLabel: "Social"  },
+  { id: "subscriptions", label: "Subscriptions", shortLabel: "Subs"    },
+  { id: "pets",          label: "Pets",          shortLabel: "Pets"    },
+  { id: "fitness",       label: "Fitness",       shortLabel: "Fitness" },
+  { id: "style",         label: "Style",         shortLabel: "Style"   },
+  { id: "giving",        label: "Giving",        shortLabel: "Giving"  },
 ];
 
 // ── Essentials line-item fields ────────────────────────────────────────────
@@ -481,8 +483,6 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const [dims, setDims]       = useState({ w: 600, h: 300 });
   const [draggingEdge, setDraggingEdge] = useState(null);
   const [hoveredEdge, setHoveredEdge]   = useState(null);
-  const [activeSlider, setActiveSlider] = useState(null);
-  const [longPressTimer, setLongPressTimer] = useState(null);
   const [photoExpanded, setPhotoExpanded] = useState(false);
   const containerRef = useRef(null);
   const dragRef      = useRef(null);
@@ -633,36 +633,6 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
       window.removeEventListener("touchend", onUp);
     };
   }, [draggingEdge, moveEdge]);
-
-  const startLongPress = useCallback((e, id) => {
-    if (e.touches?.length > 1) return;
-    const tile = tiles.find(t => t.id === id);
-    if (tile?.locked) return;
-    const cx = e.touches ? e.touches[0].clientX : e.clientX;
-    const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    const timer = setTimeout(() => {
-      const bRect = containerRef.current?.getBoundingClientRect();
-      setActiveSlider({ id, x: cx - (bRect?.left || 0), y: cy - (bRect?.top || 0) });
-    }, 500);
-    setLongPressTimer(timer);
-  }, [tiles]);
-
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimer) { clearTimeout(longPressTimer); setLongPressTimer(null); }
-  }, [longPressTimer]);
-
-  const adjustSlider = useCallback((id, newPct) => {
-    setTiles(prev => {
-      const nonLockedTotal = prev.filter(t => !t.locked && t.id !== id).reduce((s, t) => s + t.value, 0);
-      const currentPct = (prev.find(t => t.id === id)?.value / inc) * 100;
-      const diff = ((newPct - currentPct) / 100) * inc;
-      return prev.map(t => {
-        if (t.id === id) return { ...t, value: Math.max(8, t.value + diff) };
-        if (!t.locked && nonLockedTotal > 0) return { ...t, value: Math.max(8, t.value - (t.value / nonLockedTotal) * diff) };
-        return t;
-      });
-    });
-  }, [inc]);
 
   const getEdgePos = (def) => {
     const rm = Object.fromEntries(rects.map(r => [r.id, r]));
@@ -831,11 +801,12 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         </div>
       </div>
 
-      {/* Treemap — fills remaining space */}
+      {/* Treemap — fills remaining space, capped at 420px */}
       <div
         ref={containerRef}
         style={{
-          flex: 1,
+          flex: "1 1 auto",
+          maxHeight: 420, minHeight: 280,
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -848,28 +819,24 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           const pct = (tile.value / inc) * 100;
           const pad = rect.w < 50 ? 5 : 10;
 
-          // Label sizing uses both dimensions; fall back to vertical only at min readable size
-          const labelSizeRaw = Math.min(rect.w / 9, rect.h / 11, 10);
-          const labelSize = Math.max(7, labelSizeRaw);
-          const labelClips = (tile.label.length * labelSize * 0.65) > (rect.w - pad * 2);
-          const useVertical = labelClips && labelSizeRaw <= 7 && rect.h > 55;
+          const catDef = CATS.find(c => c.id === tile.id);
+          const availW = rect.w - pad * 2 - 4;
+          const fullFits    = (tile.label.length * 4.5) <= availW;
+          const shortLabel  = catDef?.shortLabel || tile.label;
+          const shortFits   = (shortLabel.length * 4.5) <= availW;
+          const displayLabel = fullFits ? tile.label : shortLabel;
+          const horizontalFits = fullFits || shortFits;
+          const useVertical = !horizontalFits && rect.h > 60;
 
-          const pctSize = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
-          const moSize  = Math.max(6, Math.min(10, rect.w / 9));
-          const showMo  = rect.h > (labelSize + pctSize + moSize + 18);
-
-          const vLabelSize = Math.max(7, Math.min(9, rect.w / 5));
-          const vPctSize   = Math.max(9, Math.min(18, rect.w / 3.5));
+          const pctSize  = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
+          const moSize   = Math.max(6, Math.min(10, rect.w / 9));
+          const showMo   = !useVertical && rect.h > (12 + pctSize + moSize + 18);
+          const labelSize = Math.max(7, Math.min(10, rect.w / 9));
+          const vMoSize  = Math.max(6, Math.min(8, rect.w / 6));
 
           return (
             <div
               key={rect.id}
-              onMouseDown={e => startLongPress(e, rect.id)}
-              onMouseUp={cancelLongPress}
-              onMouseLeave={cancelLongPress}
-              onTouchStart={e => { e.stopPropagation(); startLongPress(e, rect.id); }}
-              onTouchEnd={e => { e.stopPropagation(); cancelLongPress(); }}
-              onTouchMove={e => e.stopPropagation()}
               style={{
                 position: "absolute",
                 left: rect.x, top: rect.y,
@@ -878,36 +845,42 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 borderRadius: 8,
                 transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
-                cursor: tile.locked ? "default" : "grab",
+                cursor: "default",
               }}
             >
-              {tile.locked && rect.w > 60 && !useVertical && (
+              {tile.locked && rect.w > 60 && (
                 <div style={{ position: "absolute", top: 5, right: 7, fontSize: 7, letterSpacing: "0.12em", color: "rgba(252,246,224,0.45)", textTransform: "uppercase" }}>FIXED</div>
               )}
 
               {useVertical ? (
-                // Label on left (vertical-lr), percentage centered in remaining space — no collision
-                <div style={{ position: "absolute", inset: 0, display: "flex", padding: `${pad}px` }}>
+                // Vertical: label LEFT (upward), pct+dollar RIGHT
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "row", padding: `${pad}px` }}>
                   <div style={{
-                    writingMode: "vertical-lr",
-                    fontSize: vLabelSize, fontWeight: "700",
+                    writingMode: "vertical-rl",
+                    transform: "rotate(180deg)",
+                    fontSize: Math.max(7, Math.min(9, rect.w / 5)),
+                    fontWeight: "700",
                     letterSpacing: "0.06em", textTransform: "uppercase",
                     color: "rgba(252,246,224,0.75)",
                     overflow: "hidden", marginRight: 3, flexShrink: 0,
                     textShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                    alignSelf: "flex-start",
                   }}>
-                    {tile.label}
+                    {displayLabel}
                   </div>
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <div style={{ fontSize: vPctSize, fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center" }}>
+                    <div style={{ fontSize: Math.max(9, Math.min(18, rect.w / 3.5)), fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
                       {pct.toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap" }}>
+                      ${Math.round(tile.value).toLocaleString()}/mo
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : horizontalFits ? (
                 <div style={{ position: "absolute", top: pad, left: pad, right: pad, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
                   <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>
-                    {tile.label}
+                    {displayLabel}
                   </div>
                   <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
                     {pct.toFixed(0)}%
@@ -917,6 +890,13 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                       ${Math.round(tile.value).toLocaleString()}/mo
                     </div>
                   )}
+                </div>
+              ) : (
+                // Tiny tile — pct only, centered
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ fontSize: Math.max(8, Math.min(16, rect.w * 0.45)), fontWeight: "800", color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                    {pct.toFixed(0)}%
+                  </div>
                 </div>
               )}
             </div>
@@ -970,46 +950,6 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           );
         })}
 
-        {/* Slider popup */}
-        {activeSlider && (() => {
-          const tile = tiles.find(t => t.id === activeSlider.id);
-          if (!tile || tile.locked) return null;
-          const pct = (tile.value / inc) * 100;
-          const popW = 220, popH = 88;
-          const px = Math.min(dims.w - popW - 8, Math.max(8, activeSlider.x - popW / 2));
-          const py = Math.min(dims.h - popH - 8, Math.max(8, activeSlider.y - popH - 12));
-          return (
-            <>
-              <div style={{ position: "absolute", inset: 0, zIndex: 45 }}
-                onMouseDown={() => setActiveSlider(null)}
-                onTouchStart={e => { e.stopPropagation(); setActiveSlider(null); }}
-              />
-              <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-                style={{
-                  position: "absolute", left: px, top: py, width: popW, zIndex: 50,
-                  padding: "12px 14px", background: "rgba(22,18,10,0.96)",
-                  border: `1px solid ${tile.color}55`, borderRadius: 4,
-                  boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
-                }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 9, color: "rgba(252,246,224,0.5)", letterSpacing: "0.16em", textTransform: "uppercase" }}>{tile.label}</div>
-                    <div style={{ marginTop: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: "700", color: tile.color }}>{pct.toFixed(1)}%</span>
-                      <span style={{ fontSize: 9, color: "rgba(252,246,224,0.4)", marginLeft: 8 }}>${Math.round(tile.value).toLocaleString()}/mo</span>
-                    </div>
-                  </div>
-                  <div onMouseDown={() => setActiveSlider(null)} onTouchStart={e => { e.stopPropagation(); setActiveSlider(null); }}
-                    style={{ fontSize: 20, color: "rgba(252,246,224,0.35)", cursor: "pointer", padding: "2px 4px" }}>×</div>
-                </div>
-                <input type="range" min={0.5} max={40} step={0.5} value={pct}
-                  onChange={e => adjustSlider(activeSlider.id, parseFloat(e.target.value))}
-                  style={{ width: "100%", accentColor: tile.color, cursor: "pointer" }}
-                />
-              </div>
-            </>
-          );
-        })()}
       </div>
 
       {/* Live verdict — single line, no % subtitle in badge */}
