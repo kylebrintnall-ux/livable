@@ -57,12 +57,9 @@ Monthly take-home: $${Number(income).toLocaleString("en-US")}
 Affordability signal: ${signal?.label || "Unknown"}
 Lifestyle priorities in order: ${catList}
 
-Write exactly THREE short paragraphs with these headers:
-**The Numbers** — pure math: what the house costs monthly, what's left, whether PMI applies.
-**Your Life** — what this house means for their specific top 2-3 values. Be direct and personal.
-**The Verdict** — one plain-English recommendation. Don't hedge. Tell them clearly if this fits or doesn't.
+Write ONE paragraph, 40-60 words max. Integrate the math, lifestyle impact, and verdict into a single flowing statement. Reference the user's top 1-2 lifestyle priorities by name. Take a clear position: this home fits, doesn't fit, or is a real trade-off. No section headers, no bold markers, no bullet points.
 
-Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words per paragraph. No bullet points.`;
+Tone: warm, honest, direct. Like a smart friend who knows finance, not a financial advisor.`;
 }
 
 // ── POST /api/summary — Claude AI summary ─────────────────────────────────

@@ -1192,8 +1192,6 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
     });
   }, []);
 
-  const paragraphs = summary ? summary.split("\n\n").filter(Boolean) : [];
-
   const SVG_W = 480, SVG_H = 200, SVG_GAP = 3;
   const shareRects = computeRects(tiles, SVG_W, SVG_H, SVG_GAP);
 
@@ -1324,26 +1322,11 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 animation: cachedSummary ? "none" : "livable-reveal 0.6s cubic-bezier(0.16,1,0.3,1) both",
                 overflow: "hidden",
               }}>
-                {paragraphs.length > 0 ? paragraphs.map((p, i) => {
-                  const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
-                  if (boldMatch) {
-                    return (
-                      <div key={i} style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                          {boldMatch[1]}
-                        </div>
-                        <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                          {boldMatch[2]}
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                      {p.replace(/\*\*/g, "")}
-                    </div>
-                  );
-                }) : (
+                {summary ? (
+                  <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
+                    {summary.replace(/\*\*/g, "")}
+                  </div>
+                ) : (
                   <div style={{
                     background: "rgba(200,65,42,0.08)",
                     border: "1px solid rgba(200,65,42,0.3)",
