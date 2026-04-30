@@ -285,16 +285,25 @@ function OnboardingScreen({ onDone }) {
                 style={{
                   background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                   border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 5, padding: "8px 6px",
+                  borderRadius: 6, padding: "10px 6px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
                   transition: "all 0.12s",
                 }}
               >
-                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
+                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
                 {selected && (
-                  <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
+                  <div style={{
+                    position: "absolute", top: -6, right: -6,
+                    width: 18, height: 18, borderRadius: "50%",
+                    background: CAT_COLORS[rank % CAT_COLORS.length],
+                    color: CREAM, fontSize: 9, fontWeight: "800",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                  }}>
+                    {rank + 1}
+                  </div>
                 )}
               </div>
             );
@@ -341,72 +350,80 @@ function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
   return (
     <div style={{
       width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
-      minHeight: "100dvh",
-      display: "flex", flexDirection: "column",
-      padding: "16px 14px",
-      paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))",
-      boxSizing: "border-box",
+      height: "100dvh",
+      overflow: "hidden",
+      position: "relative",
+      paddingBottom: "env(safe-area-inset-bottom)",
     }}>
-      {/* Header: wordmark + avatar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 22, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div
-          onClick={onEditProfile}
-          style={{
-            width: 40, height: 40, borderRadius: "50%",
-            background: "rgba(255,255,255,0.45)",
-            border: "1.5px solid rgba(100,90,60,0.22)",
+      {/* Avatar — floats top-right */}
+      <div
+        onClick={onEditProfile}
+        style={{
+          position: "absolute", top: 20, right: 16,
+          width: 40, height: 40, borderRadius: "50%",
+          background: "rgba(255,255,255,0.45)",
+          border: "1.5px solid rgba(100,90,60,0.22)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", zIndex: 10,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+        </svg>
+        {usesLeft < 3 && (
+          <div style={{
+            position: "absolute", top: -2, right: -2,
+            width: 16, height: 16, borderRadius: "50%",
+            background: usesLeft === 0 ? "#C8412A" : INK,
+            color: CREAM, fontSize: 9, fontWeight: "800",
             display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", position: "relative",
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
-          </svg>
-          {usesLeft < 3 && (
-            <div style={{
-              position: "absolute", top: -2, right: -2,
-              width: 16, height: 16, borderRadius: "50%",
-              background: usesLeft === 0 ? "#C8412A" : INK,
-              color: CREAM, fontSize: 9, fontWeight: "800",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              {usesLeft}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Top spacer — pushes input to vertical center */}
-      <div style={{ flex: 1 }} />
-
-      {/* Address input block */}
-      <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "20px 18px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
-          Paste or type an address
-        </div>
-        <input
-          style={{ ...inputStyle }}
-          placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleGo()}
-          autoFocus
-        />
-        {error && (
-          <div style={{ fontSize: 11, color: HOUSING_COLOR, marginTop: 8 }}>{error}</div>
+          }}>
+            {usesLeft}
+          </div>
         )}
-        <button style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }} onClick={handleGo}>
-          {loading ? "Looking up property…" : "See If It Fits →"}
-        </button>
       </div>
 
-      {/* Bottom spacer */}
-      <div style={{ flex: 1 }} />
+      {/* Wordmark + input — centered as one block */}
+      <div style={{
+        position: "absolute",
+        top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "calc(100% - 28px)",
+        maxWidth: MOBILE_MAX - 28,
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 18 }}>
+          <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
+        </div>
+        <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "20px 18px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
+          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
+            Paste or type an address
+          </div>
+          <input
+            style={{ ...inputStyle }}
+            placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleGo()}
+            autoFocus
+          />
+          {error && (
+            <div style={{ fontSize: 11, color: HOUSING_COLOR, marginTop: 8 }}>{error}</div>
+          )}
+          <button style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }} onClick={handleGo}>
+            {loading ? "Looking up property…" : "See If It Fits →"}
+          </button>
+        </div>
+      </div>
 
-      {/* Free looks counter */}
-      <div style={{ textAlign: "center", fontSize: 10, color: MUTED, letterSpacing: "0.08em", paddingBottom: 4 }}>
+      {/* Free looks counter — pinned bottom */}
+      <div style={{
+        position: "absolute",
+        bottom: 24, left: 0, right: 0,
+        textAlign: "center",
+        fontSize: 10, color: MUTED, letterSpacing: "0.08em",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}>
         {usesLeft > 0 ? `${3 - usesLeft} of 3 free looks used` : "3 of 3 free looks used"}
       </div>
     </div>
@@ -1582,16 +1599,25 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
                   style={{
                     background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                     border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                    borderRadius: 5, padding: "8px 6px",
+                    borderRadius: 6, padding: "10px 6px",
                     cursor: atLimit ? "default" : "pointer",
                     opacity: atLimit ? 0.38 : 1,
                     textAlign: "center", position: "relative",
                     transition: "all 0.12s",
                   }}
                 >
-                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
+                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
                   {selected && (
-                    <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
+                    <div style={{
+                      position: "absolute", top: -6, right: -6,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: CAT_COLORS[rank % CAT_COLORS.length],
+                      color: CREAM, fontSize: 9, fontWeight: "800",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                    }}>
+                      {rank + 1}
+                    </div>
                   )}
                 </div>
               );
