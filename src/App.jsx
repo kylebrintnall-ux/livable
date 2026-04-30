@@ -125,7 +125,9 @@ Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words 
       body: JSON.stringify({ prompt }),
     });
     const json = await res.json();
-    return json.text || "";
+    const text = json.text || "";
+    console.log("Summary response:", text);
+    return text;
   } catch {
     return "Unable to generate summary. Please try again.";
   }
@@ -1333,26 +1335,35 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 animation: cachedSummary ? "none" : "livable-reveal 0.6s cubic-bezier(0.16,1,0.3,1) both",
                 overflow: "hidden",
               }}>
-                {paragraphs.map((p, i) => {
-                const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
-                if (boldMatch) {
+                {paragraphs.length > 0 ? paragraphs.map((p, i) => {
+                  const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
+                  if (boldMatch) {
+                    return (
+                      <div key={i} style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+                          {boldMatch[1]}
+                        </div>
+                        <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
+                          {boldMatch[2]}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={i} style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                        {boldMatch[1]}
-                      </div>
-                      <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                        {boldMatch[2]}
-                      </div>
+                    <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
+                      {p.replace(/\*\*/g, "")}
                     </div>
                   );
-                }
-                return (
-                  <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                    {p.replace(/\*\*/g, "")}
+                }) : (
+                  <div style={{
+                    background: "rgba(200,65,42,0.08)",
+                    border: "1px solid rgba(200,65,42,0.3)",
+                    borderRadius: 6, padding: "12px 14px",
+                    fontSize: 11, color: INK, lineHeight: 1.5,
+                  }}>
+                    We couldn't generate the summary right now. The math and breakdown below are still accurate.
                   </div>
-                );
-              })}
+                )}
               </div>
             ) : null}
           </div>
@@ -1392,24 +1403,27 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
         </button>
         <button
           style={{ ...btnPrimary(false), background: INK, flex: 1 }}
-          onClick={() => {
-            const styleId = "livable-print-style";
-            if (!document.getElementById(styleId)) {
-              const style = document.createElement("style");
-              style.id = styleId;
-              style.innerHTML = `
-                @media print {
-                  body > * { display: none !important; }
-                  #livable-export-card { display: block !important; }
-                  #livable-export-card { position: fixed; top: 0; left: 0; width: 100%; }
-                  @page { margin: 0.5in; size: letter portrait; }
-                }
-              `;
-              document.head.appendChild(style);
+          onClick={async () => {
+            try {
+              const res = await fetch("/api/pdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ property, tiles, signal, housingPct, rate, downPct, summary, income: inc }),
+              });
+              const blob = await res.blob();
+              const file = new File([blob], "livable-summary.pdf", { type: "application/pdf" });
+              if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "LIVABLE", text: `${property.address} — does this home fit your life?` });
+              } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = "livable-summary.pdf"; a.click();
+                URL.revokeObjectURL(url);
+              }
+            } catch (e) {
+              console.error("PDF export failed:", e);
+              alert("Could not generate PDF. Please try again.");
             }
-            const card = document.getElementById("livable-export-card");
-            if (card) card.style.display = "block";
-            window.print();
           }}
         >
           Export as PDF ↓

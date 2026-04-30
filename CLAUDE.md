@@ -77,6 +77,11 @@ Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentia
 - Scroll lock: treemap container blocks `touchmove`/`wheel`/gesture events only (not touchstart/touchend — those would break taps)
 - AI summary caching: keyed on address + housingPct + rate + downPct + tile values; cached in `cachedSummary` state
 
+## Platform strategy
+- PWA is for prototyping only. The real target is native iOS, then Android.
+- Do NOT over-invest in PWA-specific bug fixes. Patch what's needed for prototype testability, then move on.
+- Things that go away in native iOS: input auto-zoom, scroll lock weirdness, print sheet issues, viewport-height gymnastics, navigator.share fallbacks. Don't build elaborate workarounds for any of these.
+
 ## Fixed bugs / completed work
 - [x] Mobile layout: max width 430px, legend 2-col grid, photo card 2-line clamp, scroll lock scoped to treemap only
 - [x] Backend wiring: frontend calls `/api/*` (not Anthropic directly); server.js handles prompt construction

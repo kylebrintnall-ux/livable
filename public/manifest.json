@@ -1,0 +1,10 @@
+{
+  "name": "LIVABLE",
+  "short_name": "LIVABLE",
+  "description": "Does this home fit your life?",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#cdd4b0",
+  "theme_color": "#cdd4b0",
+  "orientation": "portrait"
+}
