@@ -73,18 +73,15 @@ function computeRects(tiles, W, H, gap) {
 
 // ── Category options ───────────────────────────────────────────────────────
 const CATS = [
-  { id: "travel",    label: "Travel"       },
-  { id: "dining",    label: "Dining"       },
-  { id: "savings",   label: "Savings"      },
-  { id: "fitness",   label: "Fitness"      },
-  { id: "family",    label: "Family"       },
-  { id: "health",    label: "Healthcare"   },
-  { id: "giving",    label: "Giving"       },
-  { id: "hobbies",   label: "Hobbies"      },
-  { id: "pets",      label: "Pets"         },
-  { id: "style",     label: "Style"        },
-  { id: "education", label: "Education"    },
-  { id: "social",    label: "Social"       },
+  { id: "travel",        label: "Travel"        },
+  { id: "dining",        label: "Dining"        },
+  { id: "hobbies",       label: "Hobbies"       },
+  { id: "social",        label: "Social"        },
+  { id: "subscriptions", label: "Subscriptions" },
+  { id: "pets",          label: "Pets"          },
+  { id: "fitness",       label: "Fitness"       },
+  { id: "style",         label: "Style"         },
+  { id: "giving",        label: "Giving"        },
 ];
 
 // ── Property fetch via backend (Rentcast API) ──────────────────────────────
@@ -145,7 +142,7 @@ const inputStyle = {
   background: "rgba(255,255,255,0.5)",
   border: "1.5px solid rgba(100,90,60,0.22)",
   borderRadius: 4, padding: "9px 11px",
-  fontSize: 14, color: INK, fontFamily: font, outline: "none",
+  fontSize: 16, color: INK, fontFamily: font, outline: "none",
 };
 const btnPrimary = (disabled) => ({
   background: disabled ? "#b0aa90" : INK,
@@ -207,7 +204,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
       {/* Basic needs */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Monthly needs — groceries, utilities, transport
+          Monthly essentials — savings, healthcare, education, groceries, utilities, transport
         </div>
         <div style={{ position: "relative" }}>
           <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
@@ -242,12 +239,15 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
       </div>
 
-      {/* Lifestyle values */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          Top lifestyle values — tap in order · up to {MAX_CATS}
+      {/* Lifestyle priorities */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+          Top lifestyle priorities
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+        <div style={{ fontSize: 8, color: MUTED, marginBottom: 6 }}>
+          Tap in order. First tap = most important. Up to {MAX_CATS}.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {CATS.map((cat) => {
             const rank = selectedCats.indexOf(cat.id);
             const selected = rank !== -1;
@@ -259,7 +259,7 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
                 style={{
                   background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
                   border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 5, padding: "7px 4px",
+                  borderRadius: 5, padding: "8px 6px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
@@ -320,7 +320,7 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
           Paste or type an address
         </div>
         <input
-          style={{ ...inputStyle, fontSize: 14 }}
+          style={{ ...inputStyle }}
           placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
           value={address}
           onChange={e => setAddress(e.target.value)}
@@ -350,7 +350,7 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
         <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>Your Profile</div>
         <div style={{ fontSize: 11, color: INK, lineHeight: 1.7 }}>
           <span style={{ color: MUTED }}>Take-home</span> ${profile.income.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Needs</span> ${profile.needs.toLocaleString()}/mo ·{" "}
+          <span style={{ color: MUTED }}>Essentials</span> ${profile.needs.toLocaleString()}/mo ·{" "}
           <span style={{ color: MUTED }}>Down</span> {profile.downPct}%
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
@@ -461,7 +461,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     });
 
     const rawNonHousing = [
-      { id: "needs", label: "Needs", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
+      { id: "needs", label: "Essentials", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
       ...catTiles,
     ];
     const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
@@ -637,10 +637,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const surplus = inc - totalAllocated;
   const topCat = tiles.filter(t => !t.locked).sort((a,b) => b.value - a.value)[0];
   const getVerdict = () => {
-    if (housingPct <= 28) return { text: `Fits your life. Housing takes ${housingPct.toFixed(0)}% — your ${topCat?.label || "lifestyle"} budget stays healthy.`, color: "#4A9B6F" };
-    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Drag tiles to see what to trim.`, color: "#E8A030" };
-    if (housingPct <= 45) return { text: `Stretched at ${housingPct.toFixed(0)}%. Something has to give — drag tiles to find out what.`, color: "#D97B3A" };
-    return { text: `Hard to sustain at ${housingPct.toFixed(0)}%. This house works against your life.`, color: "#C8412A" };
+    if (housingPct <= 28) return { text: `This home fits your life. Housing takes ${housingPct.toFixed(0)}% — your lifestyle budget stays healthy.`, color: "#4A9B6F" };
+    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Adjust the tiles to see what you'd trim.`, color: "#E8A030" };
+    if (housingPct <= 45) return { text: `Reshapes your lifestyle. At ${housingPct.toFixed(0)}%, something has to give — drag tiles to see what.`, color: "#D97B3A" };
+    return { text: `Hard to sustain. Housing eats ${housingPct.toFixed(0)}% — this works against your life.`, color: "#C8412A" };
   };
   const verdict = getVerdict();
 
