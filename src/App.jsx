@@ -357,15 +357,15 @@ function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
           <circle cx="12" cy="8" r="4"/>
           <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
         </svg>
-        {usesLeft < 3 && (
+        {usesLeft === 0 && (
           <div style={{
             position: "absolute", top: -2, right: -2,
             width: 16, height: 16, borderRadius: "50%",
-            background: usesLeft === 0 ? "#C8412A" : INK,
+            background: "#C8412A",
             color: CREAM, fontSize: 9, fontWeight: "800",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            {usesLeft}
+            !
           </div>
         )}
       </div>
@@ -378,11 +378,11 @@ function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
         width: "calc(100% - 28px)",
         maxWidth: MOBILE_MAX - 28,
       }}>
-        <div style={{ textAlign: "center", marginBottom: 18 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
         </div>
         <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "20px 18px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
-          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8, textAlign: "center" }}>
             Paste or type an address
           </div>
           <input
@@ -936,34 +936,34 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
 
       </div>
 
-      {/* Live verdict — single line, no % subtitle in badge */}
-      <div style={{
-        padding: "8px 10px", borderRadius: 6,
-        background: `${verdict.color}14`,
-        border: `1.5px solid ${verdict.color}55`,
-        display: "flex", alignItems: "center", gap: 8,
-        flexShrink: 0,
-      }}>
-        <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
-          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-            {signal.label}
+      {/* Verdict + actions — grouped so no dead gap between them */}
+      <div style={{ flexShrink: 0, marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{
+          padding: "8px 10px", borderRadius: 6,
+          background: `${verdict.color}14`,
+          border: `1.5px solid ${verdict.color}55`,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
+            <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+              {signal.label}
+            </div>
           </div>
+          <div style={{ fontSize: 11, color: INK, lineHeight: 1.4, minWidth: 0, flex: 1 }}>{verdict.text}</div>
         </div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.4, minWidth: 0, flex: 1 }}>{verdict.text}</div>
-      </div>
 
-      {/* Actions — marginTop auto pins to bottom of flex column */}
-      <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
-        <button
-          style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
-          onClick={onBack}
-        >← New</button>
-        <button
-          style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
-          onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
-        >
-          Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
+            onClick={onBack}
+          >← New</button>
+          <button
+            style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
+            onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
+          >
+            Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
+          </button>
+        </div>
       </div>
     </div>
   );
