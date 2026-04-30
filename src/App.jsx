@@ -75,15 +75,15 @@ function computeRects(tiles, W, H, gap) {
 
 // ── Category options ───────────────────────────────────────────────────────
 const CATS = [
-  { id: "travel",        label: "Travel",        shortLabel: "Travel"  },
-  { id: "dining",        label: "Dining",        shortLabel: "Dining"  },
-  { id: "hobbies",       label: "Hobbies",       shortLabel: "Hobbies" },
-  { id: "social",        label: "Social",        shortLabel: "Social"  },
-  { id: "subscriptions", label: "Subscriptions", shortLabel: "Subs"    },
-  { id: "pets",          label: "Pets",          shortLabel: "Pets"    },
-  { id: "fitness",       label: "Fitness",       shortLabel: "Fitness" },
-  { id: "style",         label: "Style",         shortLabel: "Style"   },
-  { id: "giving",        label: "Giving",        shortLabel: "Giving"  },
+  { id: "travel",        label: "Travel",        shortLabel: "Trvl" },
+  { id: "dining",        label: "Dining",        shortLabel: "Din"  },
+  { id: "hobbies",       label: "Hobbies",       shortLabel: "Hob"  },
+  { id: "social",        label: "Social",        shortLabel: "Soc"  },
+  { id: "subscriptions", label: "Subscriptions", shortLabel: "Subs" },
+  { id: "pets",          label: "Pets",          shortLabel: "Pets" },
+  { id: "fitness",       label: "Fitness",       shortLabel: "Fit"  },
+  { id: "style",         label: "Style",         shortLabel: "Style"},
+  { id: "giving",        label: "Giving",        shortLabel: "Give" },
 ];
 
 // ── Essentials line-item fields ────────────────────────────────────────────
@@ -168,6 +168,13 @@ function OnboardingScreen({ onDone }) {
   const canProceed = income && essentialsTotal > 0 && selectedCats.length >= 1;
 
   return (
+    <div style={{
+      height: "100%", overflowY: "auto", overscrollBehavior: "contain",
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)",
+      paddingLeft: 14, paddingRight: 14,
+      boxSizing: "border-box",
+    }}>
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
@@ -310,6 +317,7 @@ function OnboardingScreen({ onDone }) {
         Start Using Livable →
       </button>
     </div>
+    </div>
   );
 }
 
@@ -336,7 +344,7 @@ function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
   return (
     <div style={{
       width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
-      height: "100dvh",
+      height: "100%",
       overflow: "hidden",
       position: "relative",
       paddingBottom: "env(safe-area-inset-bottom)",
@@ -345,7 +353,7 @@ function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
       <div
         onClick={onEditProfile}
         style={{
-          position: "absolute", top: 20, right: 16,
+          position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 14px)", right: 16,
           width: 40, height: 40, borderRadius: "50%",
           background: "rgba(255,255,255,0.45)",
           border: "1.5px solid rgba(100,90,60,0.22)",
@@ -654,8 +662,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     <div style={{
       width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
       display: "flex", flexDirection: "column",
-      height: "100dvh",
-      padding: "8px 14px env(safe-area-inset-bottom, 8px)",
+      height: "100%",
+      padding: "calc(env(safe-area-inset-top, 0px) + 8px) 14px calc(env(safe-area-inset-bottom, 0px) + 8px)",
       boxSizing: "border-box",
       gap: 6,
     }}>
@@ -805,9 +813,9 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
 
           const catDef = CATS.find(c => c.id === tile.id);
           const availW = rect.w - pad * 2 - 4;
-          const fullFits    = (tile.label.length * 4.5) <= availW;
+          const fullFits    = (tile.label.length * 6.0) <= availW;
           const shortLabel  = catDef?.shortLabel || tile.label;
-          const shortFits   = (shortLabel.length * 4.5) <= availW;
+          const shortFits   = (shortLabel.length * 6.0) <= availW;
           const displayLabel = fullFits ? tile.label : shortLabel;
           const horizontalFits = fullFits || shortFits;
           const useVertical = !horizontalFits && rect.h > 60;
@@ -1190,6 +1198,13 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
   const shareRects = computeRects(tiles, SVG_W, SVG_H, SVG_GAP);
 
   return (
+    <div style={{
+      height: "100%", overflowY: "auto", overscrollBehavior: "contain",
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)",
+      paddingLeft: 14, paddingRight: 14,
+      boxSizing: "border-box",
+    }}>
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       <div id="livable-export-card" style={{
         background: CREAM, borderRadius: 8,
@@ -1404,6 +1419,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
         </button>
       </div>
     </div>
+    </div>
   );
 }
 
@@ -1431,7 +1447,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
       paddingBottom: "env(safe-area-inset-bottom)",
       fontFamily: font,
     }}>
-      <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", padding: "20px 14px 40px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", padding: "20px 14px 40px", paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)", boxSizing: "border-box" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
           <div onClick={onClose} style={{ fontSize: 28, color: INK, cursor: "pointer", lineHeight: 1, marginRight: 14 }}>×</div>
@@ -1610,17 +1626,11 @@ export default function App() {
     setScreen("share");
   };
 
-  const isMap = screen === "map";
-  const isAddress = screen === "address";
   return (
     <div style={{
       background: BG,
-      ...(isMap
-        ? { height: "100dvh", overflow: "hidden", padding: 0 }
-        : isAddress
-          ? { minHeight: "100dvh", padding: 0 }
-          : { minHeight: "100dvh", padding: "16px 14px 32px" }
-      ),
+      height: "100%",
+      overflow: "hidden",
       display: "flex", flexDirection: "column", alignItems: "stretch",
       fontFamily: font,
       boxSizing: "border-box",
