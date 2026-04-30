@@ -738,7 +738,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         style={{
           borderRadius: 6, overflow: "hidden",
           boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
-          position: "relative", height: 110, background: INK,
+          position: "relative", height: 80, background: INK,
           cursor: "pointer", flexShrink: 0,
         }}
       >
@@ -785,12 +785,12 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         </div>
       </div>
 
-      {/* Treemap — fills remaining space, capped at 420px */}
+      {/* Treemap — capped at 44dvh so tiles stay roughly square on any phone */}
       <div
         ref={containerRef}
         style={{
           flex: "1 1 auto",
-          maxHeight: 420, minHeight: 280,
+          maxHeight: "44dvh",
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -862,7 +862,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                   </div>
                 </div>
               ) : horizontalFits ? (
-                <div style={{ position: "absolute", top: pad, left: pad, right: pad, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
                   <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>
                     {displayLabel}
                   </div>
@@ -936,8 +936,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
 
       </div>
 
-      {/* Verdict + actions — grouped so no dead gap between them */}
-      <div style={{ flexShrink: 0, marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* Verdict + actions — sit directly below treemap, no gap in middle */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{
           padding: "8px 10px", borderRadius: 6,
           background: `${verdict.color}14`,
