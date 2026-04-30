@@ -86,7 +86,7 @@ app.post("/api/summary", async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20241022",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });

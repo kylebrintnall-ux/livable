@@ -41,7 +41,7 @@ Deployed on Railway. Live at livable.app.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
-`claude-sonnet-4-5-20241022`
+`claude-sonnet-4-5-20250929`
 
 ## Environment variables
 | Key | Used by |
