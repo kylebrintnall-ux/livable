@@ -42,10 +42,47 @@ app.use(express.json());
 // ── Anthropic client ───────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// ── Build summary prompt from raw property data ────────────────────────────
+function buildSummaryPrompt({ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }) {
+  const catList = cats.map((c, i) =>
+    `${i+1}. ${c.label} (${Number(c.pct).toFixed(0)}% of budget, $${Math.round(c.monthly)}/mo)`
+  ).join(", ");
+
+  return `You are writing a concise financial lifestyle summary for a home affordability app called LIVABLE.
+
+Property: ${address} — $${Number(price).toLocaleString("en-US")} list price
+Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} (${Number(housingPct).toFixed(0)}% of take-home)
+Down payment: ${downPct}% | Rate: ${rate}%
+Monthly take-home: $${Number(income).toLocaleString("en-US")}
+Affordability signal: ${signal?.label || "Unknown"}
+Lifestyle priorities in order: ${catList}
+
+Write exactly THREE short paragraphs with these headers:
+**The Numbers** — pure math: what the house costs monthly, what's left, whether PMI applies.
+**Your Life** — what this house means for their specific top 2-3 values. Be direct and personal.
+**The Verdict** — one plain-English recommendation. Don't hedge. Tell them clearly if this fits or doesn't.
+
+Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words per paragraph. No bullet points.`;
+}
+
 // ── POST /api/summary — Claude AI summary ─────────────────────────────────
 app.post("/api/summary", async (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "prompt is required" });
+  console.log("[summary] request received", { address: req.body?.address });
+
+  let prompt;
+  try {
+    prompt = req.body?.prompt || buildSummaryPrompt(req.body);
+  } catch (buildErr) {
+    console.warn("[summary] failed to build prompt:", buildErr.message);
+    return res.status(400).json({ summary: "", error: "malformed request: " + buildErr.message });
+  }
+
+  if (!prompt || prompt.length < 20) {
+    console.warn("[summary] missing or malformed request body");
+    return res.status(400).json({ summary: "", error: "prompt or property data required" });
+  }
+
+  console.log("[summary] prompt built, length:", prompt.length);
 
   try {
     const message = await anthropic.messages.create({
@@ -53,11 +90,13 @@ app.post("/api/summary", async (req, res) => {
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
+    console.log("[summary] anthropic responded, content blocks:", message.content?.length);
     const text = message.content?.[0]?.text || "";
-    res.json({ text });
+    if (!text) console.warn("[summary] anthropic returned empty text");
+    res.json({ summary: text, text }); // both keys for compatibility
   } catch (err) {
-    console.error("Anthropic error:", err.message);
-    res.status(500).json({ error: "Failed to generate summary" });
+    console.error("[summary] error:", err.message, err.status || "", err.stack?.split("\n")[1] || "");
+    res.status(502).json({ summary: "", text: "", error: err.message });
   }
 });
 

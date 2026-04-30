@@ -111,37 +111,21 @@ const CURRENT_RATE = 6.82;
 
 // ── AI Summary via backend (Claude API) ────────────────────────────────────
 async function generateSummary(data) {
-  const { address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate } = data;
-  const catList = cats.map((c, i) => `${i+1}. ${c.label} (${c.pct.toFixed(0)}% of budget, $${Math.round(c.monthly)}/mo)`).join(", ");
-
-  const prompt = `You are writing a concise financial lifestyle summary for a home affordability app called LIVABLE.
-
-Property: ${address} — $${price.toLocaleString()} list price
-Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString()} (${housingPct.toFixed(0)}% of take-home)
-Down payment: ${downPct}% | Rate: ${rate}%
-Monthly take-home: $${income.toLocaleString()}
-Affordability signal: ${signal.label}
-Lifestyle priorities in order: ${catList}
-
-Write exactly THREE short paragraphs with these headers:
-**The Numbers** — pure math: what the house costs monthly, what's left, whether PMI applies.
-**Your Life** — what this house means for their specific top 2-3 values. Be direct and personal.
-**The Verdict** — one plain-English recommendation. Don't hedge. Tell them clearly if this fits or doesn't.
-
-Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words per paragraph. No bullet points.`;
-
   try {
     const res = await fetch("/api/summary", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(data),
     });
+    console.log("[summary] HTTP status:", res.status);
     const json = await res.json();
-    const text = json.text || "";
-    console.log("Summary response:", text);
+    console.log("[summary] response body:", json);
+    const text = json.summary || json.text || "";
+    if (!text && json.error) console.error("[summary] server error:", json.error);
     return text;
-  } catch {
-    return "Unable to generate summary. Please try again.";
+  } catch (e) {
+    console.error("[summary] fetch failed:", e);
+    return "";
   }
 }
 
