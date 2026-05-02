@@ -1,5 +1,34 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
+// ── localStorage helpers ───────────────────────────────────────────────────
+const STORAGE_KEY = "livable:profile:v1";
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.income || !parsed?.essentials) return null;
+    // Migrate old format: array of string IDs → array of objects
+    if (Array.isArray(parsed.cats) && typeof parsed.cats[0] === "string") {
+      parsed.cats = parsed.cats.map(id => ({ id, custom: false }));
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveProfile(profile) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  } catch {}
+}
+
+function clearProfile() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
 // ── Brand ──────────────────────────────────────────────────────────────────
 const BG       = "#cdd4b0";
 const CREAM    = "#faf5e8";
@@ -156,12 +185,18 @@ function OnboardingScreen({ onDone }) {
   const [essentials, setEssentials] = useState({});
   const [downPct, setDownPct]       = useState("10");
   const [selectedCats, setSelected] = useState([]);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customLabel, setCustomLabel]         = useState("");
+  const [customAmount, setCustomAmount]       = useState("");
   const MAX_CATS = 5;
 
   const toggleCat = (id) => {
-    setSelected(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : prev.length < MAX_CATS ? [...prev, id] : prev
-    );
+    setSelected(prev => {
+      const existingIdx = prev.findIndex(c => c.id === id);
+      if (existingIdx >= 0) return prev.filter((_, i) => i !== existingIdx);
+      if (prev.length >= MAX_CATS) return prev;
+      return [...prev, { id, custom: false }];
+    });
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -268,7 +303,7 @@ function OnboardingScreen({ onDone }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {CATS.map((cat) => {
-            const rank = selectedCats.indexOf(cat.id);
+            const rank = selectedCats.findIndex(c => c.id === cat.id);
             const selected = rank !== -1;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
             return (
@@ -302,6 +337,80 @@ function OnboardingScreen({ onDone }) {
             );
           })}
         </div>
+
+        {/* Custom category chips */}
+        {selectedCats.filter(c => c.custom).length > 0 && (
+          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap" }}>
+            {selectedCats.filter(c => c.custom).map(c => {
+              const rank = selectedCats.findIndex(s => s.id === c.id);
+              return (
+                <div key={c.id} style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "6px 10px", marginRight: 6, marginBottom: 6,
+                  background: `${CAT_COLORS[rank % CAT_COLORS.length]}22`,
+                  border: `1.5px solid ${CAT_COLORS[rank % CAT_COLORS.length]}`,
+                  borderRadius: 14, fontSize: 11, fontWeight: "700",
+                  color: CAT_COLORS[rank % CAT_COLORS.length],
+                }}>
+                  {rank + 1} {c.label} · ${c.monthly}/mo
+                  <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add your own */}
+        {selectedCats.length < MAX_CATS && !showCustomInput && (
+          <div
+            onClick={() => setShowCustomInput(true)}
+            style={{
+              marginTop: 8, padding: "10px 6px",
+              background: "rgba(255,255,255,0.38)",
+              border: "1.5px dashed rgba(100,90,60,0.35)",
+              borderRadius: 6, textAlign: "center", cursor: "pointer",
+              fontSize: 10, fontWeight: "700", color: MUTED,
+              letterSpacing: "0.05em", textTransform: "uppercase",
+            }}
+          >
+            + Add your own
+          </div>
+        )}
+        {showCustomInput && (
+          <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
+            <input
+              placeholder="e.g. Kids' activities"
+              value={customLabel}
+              onChange={e => setCustomLabel(e.target.value)}
+              style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+            />
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+              <input
+                placeholder="350"
+                value={customAmount}
+                onChange={e => setCustomAmount(e.target.value)}
+                type="number" inputMode="numeric"
+                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => {
+                  if (!customLabel.trim() || !customAmount) return;
+                  const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
+                  setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                  setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
+                }}
+                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
+              >Add</button>
+              <button
+                onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
+                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
+              >Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <button
@@ -492,30 +601,39 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     const housingMonthly = payment + pmi + taxes + insurance;
 
     const remaining = inc - housingMonthly - profile.essentialsTotal;
-    const lifestylePool = Math.max(remaining, 100);
-    const weights = taperWeights(profile.cats.length);
 
-    const catTiles = profile.cats.map((id, i) => {
-      const cat = CATS.find(c => c.id === id);
-      return {
-        id, label: cat.label,
-        value: Math.max(lifestylePool * weights[i], inc * 0.03),
-        color: CAT_COLORS[i % CAT_COLORS.length],
-        locked: false,
-      };
+    // Build all cat tiles in rank order (preserves color assignment by position)
+    const allCatTiles = profile.cats.map((cat, i) => {
+      if (cat.custom) {
+        return { id: cat.id, label: cat.label, value: cat.monthly, color: CAT_COLORS[i % CAT_COLORS.length], locked: false, custom: true };
+      }
+      const def = CATS.find(c => c.id === cat.id);
+      return { id: cat.id, label: def?.label || cat.id, value: 0, color: CAT_COLORS[i % CAT_COLORS.length], locked: false, custom: false };
     });
 
+    // Custom tiles keep their explicit monthly value; predefined tiles get taper-weighted from remaining pool
+    const customCatTiles = allCatTiles.filter(t => t.custom);
+    const predefinedCatTiles = allCatTiles.filter(t => !t.custom);
+    const customTotal = customCatTiles.reduce((s, t) => s + t.value, 0);
+    const lifestylePool = Math.max(remaining - customTotal, 100);
+    const weights = taperWeights(predefinedCatTiles.length);
+    predefinedCatTiles.forEach((tile, i) => {
+      tile.value = Math.max(lifestylePool * weights[i], inc * 0.03);
+    });
+
+    // Scale essentials + predefined to fill (income - housing - customTotal); custom tiles are untouched
     const rawNonHousing = [
       { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, inc * 0.03), locked: false, color: NEEDS_COLOR },
-      ...catTiles,
+      ...predefinedCatTiles,
     ];
     const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
-    const targetSum = inc - housingMonthly;
+    const targetSum = Math.max(inc - housingMonthly - customTotal, 0);
     const scale = targetSum > 0 && rawSum > 0 ? targetSum / rawSum : 1;
 
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
       ...rawNonHousing.map(t => ({ ...t, value: Math.max(t.value * scale, inc * 0.025) })),
+      ...customCatTiles,
     ]);
   }, [property, profile, rate, downPct, inc]);
 
@@ -1407,17 +1525,23 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 }
 
 // ── Profile editor overlay ─────────────────────────────────────────────────
-function ProfileEditorOverlay({ profile, onSave, onClose }) {
+function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
   const [income, setIncome]         = useState(profile.income.toString());
   const [essentials, setEssentials] = useState(profile.essentials || {});
   const [downPct, setDownPct]       = useState(profile.downPct.toString());
   const [selectedCats, setSelected] = useState(profile.cats);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customLabel, setCustomLabel]         = useState("");
+  const [customAmount, setCustomAmount]       = useState("");
   const MAX_CATS = 5;
 
   const toggleCat = (id) => {
-    setSelected(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : prev.length < MAX_CATS ? [...prev, id] : prev
-    );
+    setSelected(prev => {
+      const existingIdx = prev.findIndex(c => c.id === id);
+      if (existingIdx >= 0) return prev.filter((_, i) => i !== existingIdx);
+      if (prev.length >= MAX_CATS) return prev;
+      return [...prev, { id, custom: false }];
+    });
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -1512,7 +1636,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
             {CATS.map((cat) => {
-              const rank = selectedCats.indexOf(cat.id);
+              const rank = selectedCats.findIndex(c => c.id === cat.id);
               const selected = rank !== -1;
               const atLimit = selectedCats.length >= MAX_CATS && !selected;
               return (
@@ -1546,6 +1670,80 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
               );
             })}
           </div>
+
+          {/* Custom category chips */}
+          {selectedCats.filter(c => c.custom).length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap" }}>
+              {selectedCats.filter(c => c.custom).map(c => {
+                const rank = selectedCats.findIndex(s => s.id === c.id);
+                return (
+                  <div key={c.id} style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "6px 10px", marginRight: 6, marginBottom: 6,
+                    background: `${CAT_COLORS[rank % CAT_COLORS.length]}22`,
+                    border: `1.5px solid ${CAT_COLORS[rank % CAT_COLORS.length]}`,
+                    borderRadius: 14, fontSize: 11, fontWeight: "700",
+                    color: CAT_COLORS[rank % CAT_COLORS.length],
+                  }}>
+                    {rank + 1} {c.label} · ${c.monthly}/mo
+                    <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add your own */}
+          {selectedCats.length < MAX_CATS && !showCustomInput && (
+            <div
+              onClick={() => setShowCustomInput(true)}
+              style={{
+                marginTop: 8, padding: "10px 6px",
+                background: "rgba(255,255,255,0.38)",
+                border: "1.5px dashed rgba(100,90,60,0.35)",
+                borderRadius: 6, textAlign: "center", cursor: "pointer",
+                fontSize: 10, fontWeight: "700", color: MUTED,
+                letterSpacing: "0.05em", textTransform: "uppercase",
+              }}
+            >
+              + Add your own
+            </div>
+          )}
+          {showCustomInput && (
+            <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
+              <input
+                placeholder="e.g. Kids' activities"
+                value={customLabel}
+                onChange={e => setCustomLabel(e.target.value)}
+                style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+              />
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  placeholder="350"
+                  value={customAmount}
+                  onChange={e => setCustomAmount(e.target.value)}
+                  type="number" inputMode="numeric"
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => {
+                    if (!customLabel.trim() || !customAmount) return;
+                    const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
+                    setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                    setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
+                  }}
+                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
+                >Add</button>
+                <button
+                  onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
+                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
+                >Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <button
@@ -1560,6 +1758,17 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
         >
           Save Changes
         </button>
+
+        <div
+          onClick={() => { if (confirm("Start over? This will clear your profile.")) onStartOver(); }}
+          style={{
+            textAlign: "center", marginTop: 16, padding: "8px",
+            fontSize: 10, color: MUTED, letterSpacing: "0.1em",
+            textTransform: "uppercase", cursor: "pointer", textDecoration: "underline",
+          }}
+        >
+          Start over
+        </div>
       </div>
     </div>
   );
@@ -1569,8 +1778,8 @@ function ProfileEditorOverlay({ profile, onSave, onClose }) {
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [screen, setScreen]               = useState("onboarding");
-  const [profile, setProfile]             = useState(null);
+  const [profile, setProfile]             = useState(loadProfile);
+  const [screen, setScreen]               = useState(() => loadProfile() ? "address" : "onboarding");
   const [property, setProperty]           = useState(null);
   const [useCount, setUseCount]           = useState(0);
   const [shareCount, setShareCount]       = useState(0);
@@ -1580,9 +1789,9 @@ export default function App() {
   const [cachedSummary, setCachedSummary] = useState(null);
   const [cachedSummaryKey, setCachedSummaryKey] = useState(null);
 
-  const handleOnboarding = (prof) => { setProfile(prof); setScreen("address"); };
+  const handleOnboarding = (prof) => { setProfile(prof); saveProfile(prof); setScreen("address"); };
 
-  const handleProfileSave = (prof) => { setProfile(prof); setShowProfileEditor(false); };
+  const handleProfileSave = (prof) => { setProfile(prof); saveProfile(prof); setShowProfileEditor(false); };
 
   const handleSearch = (prop) => {
     if (useCount >= 3) { setShowPaywall(true); return; }
@@ -1626,6 +1835,7 @@ export default function App() {
           profile={profile}
           onSave={handleProfileSave}
           onClose={() => setShowProfileEditor(false)}
+          onStartOver={() => { clearProfile(); setProfile(null); setShowProfileEditor(false); setScreen("onboarding"); }}
         />
       )}
 

@@ -76,6 +76,16 @@ Onboarding collects six individual dollar inputs: savings, healthcare, education
 ## Profile editor
 The `ProfileEditorOverlay` component renders all onboarding inputs pre-filled with current values (income, six essentials, down payment %, lifestyle categories). Opened via avatar icon top-right on AddressScreen. Saving calls `setProfile` in App root and closes the overlay. The wordmark on both onboarding and address screens has no slogan underneath.
 
+## Profile persistence
+Profile is saved to `localStorage` under key `livable:profile:v1` on first completion and on every profile editor save. On app load, `loadProfile()` hydrates the profile and skips onboarding if a valid profile is found. The "Start over" link in ProfileEditorOverlay calls `clearProfile()` and resets to onboarding. Migration: old profiles with `cats: ["travel", ...]` (array of strings) are auto-migrated to `cats: [{ id, custom: false }, ...]` on load.
+
+## Lifestyle categories — custom support
+`profile.cats` is now an array of objects:
+- Predefined: `{ id: "travel", custom: false }` — taper-weighted from remaining lifestyle pool
+- Custom: `{ id: "custom_xyz", label: "Kids' activities", monthly: 350, custom: true }` — fixed dollar amount, not taper-weighted
+
+Custom tiles keep their exact `monthly` value on the treemap. Predefined tiles and Essentials are scaled to fill `income − housing − sum(custom)`. Both OnboardingScreen and ProfileEditorOverlay have a "+ Add your own" inline form (label + dollar amount) and display custom picks as removable chips.
+
 ## Key implementation notes
 - Treemap layout: housing tile pinned left, lifestyle tiles grid 3-per-row on right
 - Edge drag: `dragRef` holds drag state; RAF-throttled `moveEdge`; proportional value transfer
