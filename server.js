@@ -43,13 +43,17 @@ app.use(express.json());
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Build summary prompt from raw property data ────────────────────────────
-function buildSummaryPrompt({ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }) {
+function buildSummaryPrompt({ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate, homeIntent }) {
   const catList = cats.map((c, i) =>
     `${i+1}. ${c.label} (${Number(c.pct).toFixed(0)}% of budget, $${Math.round(c.monthly)}/mo)`
   ).join(", ");
 
-  return `You are writing a concise financial lifestyle summary for a home affordability app called LIVABLE.
+  const homeIntentLine = homeIntent
+    ? `\nThe user described what a home means to them: "${homeIntent}". Reference this directly in the summary if it adds emotional weight.\n`
+    : "";
 
+  return `You are writing a single-paragraph lifestyle summary for LIVABLE, a home affordability app.
+${homeIntentLine}
 Property: ${address} — $${Number(price).toLocaleString("en-US")} list price
 Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} (${Number(housingPct).toFixed(0)}% of take-home)
 Down payment: ${downPct}% | Rate: ${rate}%
@@ -57,9 +61,7 @@ Monthly take-home: $${Number(income).toLocaleString("en-US")}
 Affordability signal: ${signal?.label || "Unknown"}
 Lifestyle priorities in order: ${catList}
 
-Write ONE paragraph, 40-60 words max. Integrate the math, lifestyle impact, and verdict into a single flowing statement. Reference the user's top 1-2 lifestyle priorities by name. Take a clear position: this home fits, doesn't fit, or is a real trade-off. No section headers, no bold markers, no bullet points.
-
-Tone: warm, honest, direct. Like a smart friend who knows finance, not a financial advisor.`;
+Write ONE short paragraph, 40-60 words. Integrate the math, the lifestyle impact, and the verdict in a single direct statement. Reference 1-2 of the user's specific lifestyle priorities by name. Take a clear position — this house fits, doesn't fit, or is a real trade-off worth thinking about. Don't hedge. No section headers. No bullet points. No bold markers. Just a single direct paragraph in the voice of a smart friend who knows finance and tells the truth.`;
 }
 
 // ── POST /api/summary — Claude AI summary ─────────────────────────────────
@@ -94,6 +96,63 @@ app.post("/api/summary", async (req, res) => {
   } catch (err) {
     console.error("[summary] error:", err.message, err.status || "", err.stack?.split("\n")[1] || "");
     res.status(502).json({ summary: "", text: "", error: err.message });
+  }
+});
+
+// ── POST /api/suggest-categories — AI lifestyle category suggestions ──────
+app.post("/api/suggest-categories", async (req, res) => {
+  console.log("[suggest] request received", { intent: req.body?.homeIntent?.slice(0, 60) });
+  try {
+    const intent = (req.body?.homeIntent || "").trim();
+    if (intent.length < 10) return res.status(400).json({ error: "Description too short" });
+
+    const prompt = `A user is buying a home and described what a home means to them: "${intent}"
+
+Based on this description, suggest 3-5 lifestyle spending categories that match the values, activities, or priorities they expressed. Each category should:
+- Have a short, specific label (1-2 words, e.g. "Hosting", "Garden", "Recovery", "Kids' activities")
+- Have a realistic monthly dollar estimate ($50-$800)
+- Reflect what they actually said, not generic categories
+
+Avoid generic labels like "Travel" or "Dining" unless they explicitly mentioned them. Prefer specific labels that come from their language ("Garden" if they mentioned gardening, "Hosting" if they mentioned having people over, etc.).
+
+Respond ONLY with valid JSON in this exact format, no markdown, no preamble:
+{"categories":[{"id":"sug_1","label":"Hosting","monthly":150},{"id":"sug_2","label":"Garden","monthly":80}]}`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 500,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content?.[0]?.text || "";
+    console.log("[suggest] raw response:", text.slice(0, 200));
+
+    let parsed;
+    try {
+      const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.error("[suggest] JSON parse failed:", parseErr.message);
+      return res.status(502).json({ error: "AI response was not valid JSON", raw: text });
+    }
+
+    if (!Array.isArray(parsed?.categories)) {
+      return res.status(502).json({ error: "AI response missing categories array" });
+    }
+
+    const categories = parsed.categories
+      .filter(c => c?.label && typeof c?.monthly === "number")
+      .map((c, i) => ({
+        id: c.id || `sug_${Date.now()}_${i}`,
+        label: String(c.label).slice(0, 30),
+        monthly: Math.max(20, Math.min(2000, Math.round(c.monthly))),
+      }))
+      .slice(0, 6);
+
+    res.json({ categories });
+  } catch (err) {
+    console.error("[suggest] error:", err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 

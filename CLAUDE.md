@@ -37,7 +37,8 @@ Deployed on Railway. Live at livable.app.
 
 ## Backend routes (`server.js`)
 - `GET /api/property?address=...` → Rentcast lookup → `{ address, price, beds, baths, sqft, yearBuilt }`
-- `POST /api/summary` → body `{ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }` → Claude generates 3-paragraph summary → `{ text }`
+- `POST /api/summary` → body `{ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate, homeIntent? }` → Claude generates ONE paragraph (40-60 words) → `{ text }`. Includes `homeIntent` in the prompt if present.
+- `POST /api/suggest-categories` → body `{ homeIntent }` → Claude returns 3-5 specific lifestyle category suggestions → `{ categories: [{ id, label, monthly }] }`. Labels are derived from the user's language, not generic defaults.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
@@ -74,7 +75,10 @@ Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentia
 Onboarding collects six individual dollar inputs: savings, healthcare, education, groceries, gas/transport, utilities. These are tracked as `profile.essentials` (object) and summed into `profile.essentialsTotal` (number). The treemap shows ONE Essentials tile (`id: "needs"`, label: "Essentials", color: NEEDS_COLOR #5a4e8a) whose value is `essentialsTotal`. The breakdown is for input granularity only.
 
 ## Profile editor
-The `ProfileEditorOverlay` component renders all onboarding inputs pre-filled with current values (income, six essentials, down payment %, lifestyle categories). Opened via avatar icon top-right on AddressScreen. Saving calls `setProfile` in App root and closes the overlay. The wordmark on both onboarding and address screens has no slogan underneath.
+The `ProfileEditorOverlay` component renders all onboarding inputs pre-filled with current values (income, six essentials, down payment %, homeIntent, lifestyle categories). Opened via avatar icon top-right on AddressScreen. Saving calls `setProfile` in App root and closes the overlay. The wordmark on both onboarding and address screens has no slogan underneath.
+
+## homeIntent field
+`profile.homeIntent` is an optional string (saved to localStorage). Collected via a textarea between the down-payment picker and lifestyle grid in both OnboardingScreen and ProfileEditorOverlay ("What is a home for?"). When >10 chars, a "Suggest categories from this →" button calls `/api/suggest-categories` and renders AI-proposed chips above the predefined picker. Accepted suggestions are added to `profile.cats` as custom categories. `homeIntent` is also passed to `/api/summary` to personalise the AI paragraph.
 
 ## Profile persistence
 Profile is saved to `localStorage` under key `livable:profile:v1` on first completion and on every profile editor save. On app load, `loadProfile()` hydrates the profile and skips onboarding if a valid profile is found. The "Start over" link in ProfileEditorOverlay calls `clearProfile()` and resets to onboarding. Migration: old profiles with `cats: ["travel", ...]` (array of strings) are auto-migrated to `cats: [{ id, custom: false }, ...]` on load.

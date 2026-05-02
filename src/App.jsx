@@ -184,6 +184,9 @@ function OnboardingScreen({ onDone }) {
   const [income, setIncome]         = useState("");
   const [essentials, setEssentials] = useState({});
   const [downPct, setDownPct]       = useState("10");
+  const [homeIntent, setHomeIntent] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggested, setSuggested]   = useState(null);
   const [selectedCats, setSelected] = useState([]);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customLabel, setCustomLabel]         = useState("");
@@ -197,6 +200,25 @@ function OnboardingScreen({ onDone }) {
       if (prev.length >= MAX_CATS) return prev;
       return [...prev, { id, custom: false }];
     });
+  };
+
+  const handleSuggestCategories = async () => {
+    setSuggesting(true);
+    try {
+      const res = await fetch("/api/suggest-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ homeIntent: homeIntent.trim() }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setSuggested(json);
+    } catch (e) {
+      console.error("Suggest categories failed:", e);
+      alert("Couldn't read your description. You can still pick from the list below.");
+    } finally {
+      setSuggesting(false);
+    }
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -292,6 +314,68 @@ function OnboardingScreen({ onDone }) {
           ))}
         </div>
       </div>
+
+      {/* Home intent */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+          What is a home for? <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.7 }}>(optional)</span>
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, marginBottom: 8 }}>
+          Some people say "a place to recover," "somewhere stable for my kids," "a space for hosting." What's yours?
+        </div>
+        <textarea
+          value={homeIntent}
+          onChange={e => setHomeIntent(e.target.value)}
+          placeholder="In a sentence or two..."
+          rows={3}
+          style={{ ...inputStyle, fontSize: 16, resize: "none", lineHeight: 1.5, padding: "10px 12px" }}
+        />
+        {homeIntent.trim().length > 10 && (
+          <button
+            onClick={handleSuggestCategories}
+            disabled={suggesting}
+            style={{ ...btnPrimary(suggesting), marginTop: 8, background: suggesting ? "#b0aa90" : "#4A9B6F", fontSize: 9 }}
+          >
+            {suggesting ? "Reading what you wrote…" : "Suggest categories from this →"}
+          </button>
+        )}
+      </div>
+
+      {/* AI-suggested categories */}
+      {suggested?.categories?.length > 0 && (
+        <div style={{ marginBottom: 16, padding: 14, background: "rgba(74,155,111,0.08)", border: "1.5px solid rgba(74,155,111,0.3)", borderRadius: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: "700", color: "#4A9B6F", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+            Based on what you wrote
+          </div>
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+            Tap to add. You can edit or remove any.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {suggested.categories.map((c) => {
+              const alreadyAdded = selectedCats.some(s => s.id === c.id || s.label?.toLowerCase() === c.label.toLowerCase());
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    if (alreadyAdded || selectedCats.length >= MAX_CATS) return;
+                    setSelected(prev => [...prev, { id: c.id, label: c.label, monthly: c.monthly, custom: true }]);
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    background: alreadyAdded ? "rgba(74,155,111,0.2)" : "rgba(255,255,255,0.6)",
+                    border: `1.5px solid ${alreadyAdded ? "#4A9B6F" : "rgba(100,90,60,0.25)"}`,
+                    borderRadius: 14, fontSize: 11, fontWeight: "700", color: INK,
+                    cursor: alreadyAdded ? "default" : "pointer",
+                    opacity: alreadyAdded ? 0.6 : 1,
+                  }}
+                >
+                  {alreadyAdded ? "✓ " : "+ "}{c.label} · ${c.monthly}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Lifestyle priorities */}
       <div style={{ marginBottom: 12 }}>
@@ -421,6 +505,7 @@ function OnboardingScreen({ onDone }) {
           essentials,
           downPct: parseFloat(downPct),
           cats: selectedCats,
+          homeIntent: homeIntent.trim(),
         })}
       >
         Start Using Livable →
@@ -1301,6 +1386,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
       cats: catTiles.map(t => ({ label: t.label, pct: (t.value / inc) * 100, monthly: t.value })),
       downPct,
       rate,
+      homeIntent: profile.homeIntent || "",
     }).then(text => {
       setSummary(text);
       onSummaryReady(text);
@@ -1435,27 +1521,26 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
           {/* AI Summary */}
           <div style={{ marginBottom: 14 }}>
-            {loading ? <HouseLoader done={done} /> : revealed ? (
+            {loading ? <HouseLoader done={done} /> : null}
+            {!loading && revealed && summary ? (
               <div style={{
                 animation: cachedSummary ? "none" : "livable-reveal 0.6s cubic-bezier(0.16,1,0.3,1) both",
-                overflow: "hidden",
+                fontSize: 13, color: INK, lineHeight: 1.65,
+                padding: "4px 0",
               }}>
-                {summary ? (
-                  <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                    {summary.replace(/\*\*/g, "")}
-                  </div>
-                ) : (
-                  <div style={{
-                    background: "rgba(200,65,42,0.08)",
-                    border: "1px solid rgba(200,65,42,0.3)",
-                    borderRadius: 6, padding: "12px 14px",
-                    fontSize: 11, color: INK, lineHeight: 1.5,
-                  }}>
-                    We couldn't generate the summary right now. The math and breakdown below are still accurate.
-                  </div>
-                )}
+                {summary}
               </div>
             ) : null}
+            {!loading && (!summary || summary.trim().length === 0) && (
+              <div style={{
+                background: "rgba(200,65,42,0.08)",
+                border: "1px solid rgba(200,65,42,0.3)",
+                borderRadius: 6, padding: "12px 14px",
+                fontSize: 11, color: INK, lineHeight: 1.5,
+              }}>
+                We couldn't generate the summary right now. The math and breakdown below are still accurate.
+              </div>
+            )}
           </div>
 
           {/* Budget breakdown table */}
@@ -1529,6 +1614,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
   const [income, setIncome]         = useState(profile.income.toString());
   const [essentials, setEssentials] = useState(profile.essentials || {});
   const [downPct, setDownPct]       = useState(profile.downPct.toString());
+  const [homeIntent, setHomeIntent] = useState(profile.homeIntent || "");
   const [selectedCats, setSelected] = useState(profile.cats);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customLabel, setCustomLabel]         = useState("");
@@ -1624,6 +1710,20 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Home intent */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+            What is a home for? <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.7 }}>(optional)</span>
+          </div>
+          <textarea
+            value={homeIntent}
+            onChange={e => setHomeIntent(e.target.value)}
+            placeholder="In a sentence or two..."
+            rows={3}
+            style={{ ...inputStyle, fontSize: 16, resize: "none", lineHeight: 1.5, padding: "10px 12px" }}
+          />
         </div>
 
         {/* Lifestyle priorities */}
@@ -1754,6 +1854,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             essentials,
             downPct: parseFloat(downPct),
             cats: selectedCats,
+            homeIntent: homeIntent.trim(),
           })}
         >
           Save Changes
