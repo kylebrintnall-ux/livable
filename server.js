@@ -44,7 +44,14 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Build summary prompt from raw property data ────────────────────────────
 function buildSummaryPrompt({ address, price, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
-  const catList = (cats || []).map(c => `${c.label}: $${Math.round(c.monthly)}/mo`).join("; ");
+  const recurring     = (cats || []).filter(c => c.kind === "recurring");
+  const savings       = (cats || []).filter(c => c.kind === "savings");
+  const propertyNeeds = (cats || []).filter(c => c.kind === "property");
+  const oneTime       = (cats || []).filter(c => c.kind === "one_time");
+  const recurringStr  = recurring.length     ? recurring.map(c => `${c.label}: $${Math.round(c.monthly)}/mo`).join("; ") : "none";
+  const savingsStr    = savings.length       ? savings.map(c => `${c.label}: saving $${Math.round(c.monthly)}/mo`).join("; ") : "none";
+  const propertyStr   = propertyNeeds.length ? propertyNeeds.map(c => `${c.label}${c.propertyNeed ? ` (needs ${c.propertyNeed})` : ""}`).join("; ") : "none";
+  const oneTimeStr    = oneTime.length       ? oneTime.map(c => c.label).join(", ") : "none";
   const essLine = essentialsTotal ? `Monthly essentials (savings, healthcare, groceries, etc.): $${Math.round(essentialsTotal).toLocaleString("en-US")}\n` : "";
 
   return `You are writing a single-paragraph lifestyle summary for LIVABLE, a home affordability app.
@@ -54,9 +61,14 @@ Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} (${
 Down payment: ${downPct}% | Rate: ${rate}%
 Monthly take-home: $${Number(income).toLocaleString("en-US")}
 ${essLine}Affordability signal: ${signal?.label || "Unknown"}
-Lifestyle spending (user-entered real amounts): ${catList}
 
-Write ONE short paragraph, 40-60 words. Use the real dollar amounts given. Integrate the math, the lifestyle impact, and the verdict in a single direct statement. Reference 1-2 of the user's specific lifestyle categories by name and dollar amount. Take a clear position — this house fits, doesn't fit, or is a real trade-off worth thinking about. Don't hedge. No section headers. No bullet points. No bold markers. Just a single direct paragraph in the voice of a smart friend who knows finance and tells the truth.`;
+Lifestyle commitments:
+- Recurring monthly: ${recurringStr}
+- Saving toward: ${savingsStr}
+- One-time costs: ${oneTimeStr}
+- Property requirements: ${propertyStr}
+
+Write ONE short paragraph, 50-70 words. Use the real dollar amounts given. Integrate the math, the lifestyle impact, and the verdict in a single direct statement. Reference 1-2 of the user's specific lifestyle categories by name. If the user has property requirements or one-time costs, weave them in naturally. Take a clear position — this house fits, doesn't fit, or is a real trade-off worth thinking about. Don't hedge. No section headers. No bullet points. No bold markers. Just a single direct paragraph in the voice of a smart friend who knows finance and tells the truth.`;
 }
 
 // ── Port of client-side computeRects for PDF treemap ──────────────────────
