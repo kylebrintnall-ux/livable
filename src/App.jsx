@@ -9,9 +9,21 @@ function loadProfile() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.income || !parsed?.essentials) return null;
-    // Migrate old format: array of string IDs → array of objects
-    if (Array.isArray(parsed.cats) && typeof parsed.cats[0] === "string") {
-      parsed.cats = parsed.cats.map(id => ({ id, custom: false }));
+    delete parsed.homeIntent;
+    if (Array.isArray(parsed.cats)) {
+      parsed.cats = parsed.cats.map(c => {
+        if (typeof c === "string") {
+          const def = CATS.find(d => d.id === c);
+          return { id: c, label: def?.label || c, monthly: 0, custom: false };
+        }
+        const def = CATS.find(d => d.id === c.id);
+        return {
+          ...c,
+          label: c.label || def?.label || c.id,
+          monthly: typeof c.monthly === "number" ? c.monthly : 0,
+          custom: c.custom ?? false,
+        };
+      });
     }
     return parsed;
   } catch {
@@ -39,14 +51,6 @@ const NEEDS_COLOR   = "#5a4e8a";
 const CAT_COLORS    = ["#3B7FC4","#4A9B6F","#E8A030","#D4505A","#3A9EA5","#C4963B","#7B5EA7","#D97B3A"];
 
 const MOBILE_MAX = 430;
-
-// ── Taper curve for stack-ranked tiles ────────────────────────────────────
-const TAPER = [0.30, 0.22, 0.17, 0.13, 0.10, 0.08];
-function taperWeights(n) {
-  const w = TAPER.slice(0, n);
-  const sum = w.reduce((s, v) => s + v, 0);
-  return w.map(v => v / sum);
-}
 
 // ── Mortgage math ──────────────────────────────────────────────────────────
 function monthlyPayment(price, downPct, annualRate) {
@@ -184,41 +188,28 @@ function OnboardingScreen({ onDone }) {
   const [income, setIncome]         = useState("");
   const [essentials, setEssentials] = useState({});
   const [downPct, setDownPct]       = useState("10");
-  const [homeIntent, setHomeIntent] = useState("");
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggested, setSuggested]   = useState(null);
-  const [selectedCats, setSelected] = useState([]);
+  const [selectedCats, setSelected]       = useState([]);
+  const [pendingCategory, setPendingCat]  = useState(null);
+  const [pendingAmount, setPendingAmt]    = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customLabel, setCustomLabel]         = useState("");
   const [customAmount, setCustomAmount]       = useState("");
   const MAX_CATS = 5;
 
   const toggleCat = (id) => {
-    setSelected(prev => {
-      const existingIdx = prev.findIndex(c => c.id === id);
-      if (existingIdx >= 0) return prev.filter((_, i) => i !== existingIdx);
-      if (prev.length >= MAX_CATS) return prev;
-      return [...prev, { id, custom: false }];
-    });
+    const existingIdx = selectedCats.findIndex(c => c.id === id);
+    if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
+    if (selectedCats.length >= MAX_CATS) return;
+    setPendingCat(id);
+    setPendingAmt("");
   };
 
-  const handleSuggestCategories = async () => {
-    setSuggesting(true);
-    try {
-      const res = await fetch("/api/suggest-categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ homeIntent: homeIntent.trim() }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setSuggested(json);
-    } catch (e) {
-      console.error("Suggest categories failed:", e);
-      alert("Couldn't read your description. You can still pick from the list below.");
-    } finally {
-      setSuggesting(false);
-    }
+  const confirmPending = () => {
+    if (!pendingCategory || !pendingAmount) return;
+    const def = CATS.find(c => c.id === pendingCategory);
+    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
+    setPendingCat(null);
+    setPendingAmt("");
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -315,68 +306,6 @@ function OnboardingScreen({ onDone }) {
         </div>
       </div>
 
-      {/* Home intent */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-          What is a home for? <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.7 }}>(optional)</span>
-        </div>
-        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, marginBottom: 8 }}>
-          Some people say "a place to recover," "somewhere stable for my kids," "a space for hosting." What's yours?
-        </div>
-        <textarea
-          value={homeIntent}
-          onChange={e => setHomeIntent(e.target.value)}
-          placeholder="In a sentence or two..."
-          rows={3}
-          style={{ ...inputStyle, fontSize: 16, resize: "none", lineHeight: 1.5, padding: "10px 12px" }}
-        />
-        {homeIntent.trim().length > 10 && (
-          <button
-            onClick={handleSuggestCategories}
-            disabled={suggesting}
-            style={{ ...btnPrimary(suggesting), marginTop: 8, background: suggesting ? "#b0aa90" : "#4A9B6F", fontSize: 9 }}
-          >
-            {suggesting ? "Reading what you wrote…" : "Suggest categories from this →"}
-          </button>
-        )}
-      </div>
-
-      {/* AI-suggested categories */}
-      {suggested?.categories?.length > 0 && (
-        <div style={{ marginBottom: 16, padding: 14, background: "rgba(74,155,111,0.08)", border: "1.5px solid rgba(74,155,111,0.3)", borderRadius: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: "700", color: "#4A9B6F", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-            Based on what you wrote
-          </div>
-          <div style={{ fontSize: 10, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
-            Tap to add. You can edit or remove any.
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {suggested.categories.map((c) => {
-              const alreadyAdded = selectedCats.some(s => s.id === c.id || s.label?.toLowerCase() === c.label.toLowerCase());
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => {
-                    if (alreadyAdded || selectedCats.length >= MAX_CATS) return;
-                    setSelected(prev => [...prev, { id: c.id, label: c.label, monthly: c.monthly, custom: true }]);
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    background: alreadyAdded ? "rgba(74,155,111,0.2)" : "rgba(255,255,255,0.6)",
-                    border: `1.5px solid ${alreadyAdded ? "#4A9B6F" : "rgba(100,90,60,0.25)"}`,
-                    borderRadius: 14, fontSize: 11, fontWeight: "700", color: INK,
-                    cursor: alreadyAdded ? "default" : "pointer",
-                    opacity: alreadyAdded ? 0.6 : 1,
-                  }}
-                >
-                  {alreadyAdded ? "✓ " : "+ "}{c.label} · ${c.monthly}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Lifestyle priorities */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
@@ -389,14 +318,15 @@ function OnboardingScreen({ onDone }) {
           {CATS.map((cat) => {
             const rank = selectedCats.findIndex(c => c.id === cat.id);
             const selected = rank !== -1;
+            const isPending = pendingCategory === cat.id;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
             return (
               <div
                 key={cat.id}
-                onClick={() => toggleCat(cat.id)}
+                onClick={() => !isPending && toggleCat(cat.id)}
                 style={{
-                  background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
-                  border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
+                  background: isPending ? `${CAT_COLORS[0]}18` : selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
+                  border: `1.5px solid ${isPending ? CAT_COLORS[0] : selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
                   borderRadius: 6, padding: "10px 6px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
@@ -406,21 +336,51 @@ function OnboardingScreen({ onDone }) {
               >
                 <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
                 {selected && (
-                  <div style={{
-                    position: "absolute", top: -6, right: -6,
-                    width: 18, height: 18, borderRadius: "50%",
-                    background: CAT_COLORS[rank % CAT_COLORS.length],
-                    color: CREAM, fontSize: 9, fontWeight: "800",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-                  }}>
-                    {rank + 1}
-                  </div>
+                  <>
+                    <div style={{
+                      position: "absolute", top: -6, right: -6,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: CAT_COLORS[rank % CAT_COLORS.length],
+                      color: CREAM, fontSize: 9, fontWeight: "800",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                    }}>
+                      {rank + 1}
+                    </div>
+                    <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
+                      ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                    </div>
+                  </>
                 )}
               </div>
             );
           })}
         </div>
+
+        {/* Pending category amount input */}
+        {pendingCategory && (
+          <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
+            <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+              {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+            </div>
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+              <input
+                autoFocus
+                placeholder="e.g. 200"
+                value={pendingAmount}
+                onChange={e => setPendingAmt(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
+                type="number" inputMode="numeric"
+                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+              <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Custom category chips */}
         {selectedCats.filter(c => c.custom).length > 0 && (
@@ -505,7 +465,6 @@ function OnboardingScreen({ onDone }) {
           essentials,
           downPct: parseFloat(downPct),
           cats: selectedCats,
-          homeIntent: homeIntent.trim(),
         })}
       >
         Start Using Livable →
@@ -661,7 +620,7 @@ function PaywallOverlay({ onClose }) {
 }
 
 // ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, useCount, shareCount, onBack, onShare }) {
+function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, onCatAmountChange }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -669,6 +628,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const [dims, setDims]       = useState({ w: 600, h: 300 });
   const [draggingEdge, setDraggingEdge] = useState(null);
   const [hoveredEdge, setHoveredEdge]   = useState(null);
+  const [editingTile, setEditingTile]   = useState(null);
+  const [editingAmount, setEditingAmt]  = useState("");
   const [photoExpanded, setPhotoExpanded] = useState(false);
   const containerRef = useRef(null);
   const dragRef      = useRef(null);
@@ -685,40 +646,17 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     const insurance = Math.round(property.price * 0.005 / 12);
     const housingMonthly = payment + pmi + taxes + insurance;
 
-    const remaining = inc - housingMonthly - profile.essentialsTotal;
-
-    // Build all cat tiles in rank order (preserves color assignment by position)
-    const allCatTiles = profile.cats.map((cat, i) => {
-      if (cat.custom) {
-        return { id: cat.id, label: cat.label, value: cat.monthly, color: CAT_COLORS[i % CAT_COLORS.length], locked: false, custom: true };
-      }
-      const def = CATS.find(c => c.id === cat.id);
-      return { id: cat.id, label: def?.label || cat.id, value: 0, color: CAT_COLORS[i % CAT_COLORS.length], locked: false, custom: false };
-    });
-
-    // Custom tiles keep their explicit monthly value; predefined tiles get taper-weighted from remaining pool
-    const customCatTiles = allCatTiles.filter(t => t.custom);
-    const predefinedCatTiles = allCatTiles.filter(t => !t.custom);
-    const customTotal = customCatTiles.reduce((s, t) => s + t.value, 0);
-    const lifestylePool = Math.max(remaining - customTotal, 100);
-    const weights = taperWeights(predefinedCatTiles.length);
-    predefinedCatTiles.forEach((tile, i) => {
-      tile.value = Math.max(lifestylePool * weights[i], inc * 0.03);
-    });
-
-    // Scale essentials + predefined to fill (income - housing - customTotal); custom tiles are untouched
-    const rawNonHousing = [
-      { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, inc * 0.03), locked: false, color: NEEDS_COLOR },
-      ...predefinedCatTiles,
-    ];
-    const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
-    const targetSum = Math.max(inc - housingMonthly - customTotal, 0);
-    const scale = targetSum > 0 && rawSum > 0 ? targetSum / rawSum : 1;
-
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
-      ...rawNonHousing.map(t => ({ ...t, value: Math.max(t.value * scale, inc * 0.025) })),
-      ...customCatTiles,
+      { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, 1), locked: true, color: NEEDS_COLOR },
+      ...profile.cats.map((cat, i) => ({
+        id: cat.id,
+        label: cat.label,
+        value: Math.max(cat.monthly || 0, 1),
+        color: CAT_COLORS[i % CAT_COLORS.length],
+        locked: false,
+        custom: cat.custom,
+      })),
     ]);
   }, [property, profile, rate, downPct, inc]);
 
@@ -828,6 +766,16 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
       window.removeEventListener("touchend", onUp);
     };
   }, [draggingEdge, moveEdge]);
+
+  const confirmEdit = useCallback(() => {
+    const val = parseFloat(editingAmount);
+    if (isNaN(val) || val < 0) return;
+    const newVal = Math.max(val, 1);
+    setTiles(prev => prev.map(t => t.id === editingTile ? { ...t, value: newVal } : t));
+    if (onCatAmountChange) onCatAmountChange(editingTile, newVal);
+    setEditingTile(null);
+    setEditingAmt("");
+  }, [editingTile, editingAmount, onCatAmountChange]);
 
   const getEdgePos = (def) => {
     const rm = Object.fromEntries(rects.map(r => [r.id, r]));
@@ -1032,6 +980,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           return (
             <div
               key={rect.id}
+              onClick={() => { if (!tile.locked && !draggingEdge) { setEditingTile(tile.id); setEditingAmt(String(Math.round(tile.value))); } }}
               style={{
                 position: "absolute",
                 left: rect.x, top: rect.y,
@@ -1040,7 +989,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 borderRadius: 8,
                 transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
-                cursor: "default",
+                cursor: tile.locked ? "default" : "pointer",
               }}
             >
               {tile.locked && rect.w > 60 && (
@@ -1097,6 +1046,33 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
             </div>
           );
         })}
+
+        {/* Tile edit popover */}
+        {editingTile && (
+          <div
+            style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}
+            onClick={() => { setEditingTile(null); setEditingAmt(""); }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{ background: BG, borderRadius: 8, padding: "18px 16px", width: 220, boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
+              <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 10 }}>
+                {tiles.find(t => t.id === editingTile)?.label} — monthly
+              </div>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  autoFocus type="number" inputMode="numeric"
+                  value={editingAmount}
+                  onChange={e => setEditingAmt(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") { setEditingTile(null); setEditingAmt(""); } }}
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <button onClick={confirmEdit} disabled={!editingAmount} style={{ ...btnPrimary(!editingAmount), padding: "9px 14px", fontSize: 9 }}>
+                Update
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Edge handles */}
         {edgeDefs.map(def => {
@@ -1160,7 +1136,20 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
               {signal.label}
             </div>
           </div>
-          <div style={{ fontSize: 11, color: INK, lineHeight: 1.4, minWidth: 0, flex: 1 }}>{verdict.text}</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 11, color: INK, lineHeight: 1.4 }}>{verdict.text}</div>
+            {(() => {
+              const totalSpend = tiles.reduce((s, t) => s + t.value, 0);
+              const surplus = inc - totalSpend;
+              return (
+                <div style={{ fontSize: 10, color: surplus >= 0 ? "#4A9B6F" : "#C8412A", fontWeight: "600", marginTop: 3 }}>
+                  {surplus >= 0
+                    ? `+$${Math.round(surplus).toLocaleString()}/mo unallocated`
+                    : `-$${Math.round(Math.abs(surplus)).toLocaleString()}/mo over budget`}
+                </div>
+              );
+            })()}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
@@ -1375,18 +1364,17 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
   useEffect(() => {
     if (cachedSummary) { setSummary(cachedSummary); setLoading(false); setRevealed(true); return; }
-    const catTiles = tiles.filter(t => t.id !== "housing" && t.id !== "needs");
     generateSummary({
       address: property.address,
       price: property.price,
       monthlyHousing: tiles.find(t => t.id === "housing")?.value || 0,
       income: inc,
+      essentialsTotal: profile.essentialsTotal,
       housingPct,
       signal,
-      cats: catTiles.map(t => ({ label: t.label, pct: (t.value / inc) * 100, monthly: t.value })),
+      cats: profile.cats.map(c => ({ label: c.label, monthly: c.monthly })),
       downPct,
       rate,
-      homeIntent: profile.homeIntent || "",
     }).then(text => {
       setSummary(text);
       onSummaryReady(text);
@@ -1614,20 +1602,28 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
   const [income, setIncome]         = useState(profile.income.toString());
   const [essentials, setEssentials] = useState(profile.essentials || {});
   const [downPct, setDownPct]       = useState(profile.downPct.toString());
-  const [homeIntent, setHomeIntent] = useState(profile.homeIntent || "");
-  const [selectedCats, setSelected] = useState(profile.cats);
+  const [selectedCats, setSelected]       = useState(profile.cats);
+  const [pendingCategory, setPendingCat]  = useState(null);
+  const [pendingAmount, setPendingAmt]    = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customLabel, setCustomLabel]         = useState("");
   const [customAmount, setCustomAmount]       = useState("");
   const MAX_CATS = 5;
 
   const toggleCat = (id) => {
-    setSelected(prev => {
-      const existingIdx = prev.findIndex(c => c.id === id);
-      if (existingIdx >= 0) return prev.filter((_, i) => i !== existingIdx);
-      if (prev.length >= MAX_CATS) return prev;
-      return [...prev, { id, custom: false }];
-    });
+    const existingIdx = selectedCats.findIndex(c => c.id === id);
+    if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
+    if (selectedCats.length >= MAX_CATS) return;
+    setPendingCat(id);
+    setPendingAmt("");
+  };
+
+  const confirmPending = () => {
+    if (!pendingCategory || !pendingAmount) return;
+    const def = CATS.find(c => c.id === pendingCategory);
+    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
+    setPendingCat(null);
+    setPendingAmt("");
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -1712,20 +1708,6 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
           </div>
         </div>
 
-        {/* Home intent */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
-            What is a home for? <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.7 }}>(optional)</span>
-          </div>
-          <textarea
-            value={homeIntent}
-            onChange={e => setHomeIntent(e.target.value)}
-            placeholder="In a sentence or two..."
-            rows={3}
-            style={{ ...inputStyle, fontSize: 16, resize: "none", lineHeight: 1.5, padding: "10px 12px" }}
-          />
-        </div>
-
         {/* Lifestyle priorities */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
@@ -1738,14 +1720,15 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             {CATS.map((cat) => {
               const rank = selectedCats.findIndex(c => c.id === cat.id);
               const selected = rank !== -1;
+              const isPending = pendingCategory === cat.id;
               const atLimit = selectedCats.length >= MAX_CATS && !selected;
               return (
                 <div
                   key={cat.id}
-                  onClick={() => toggleCat(cat.id)}
+                  onClick={() => !isPending && toggleCat(cat.id)}
                   style={{
-                    background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
-                    border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
+                    background: isPending ? `${CAT_COLORS[0]}18` : selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
+                    border: `1.5px solid ${isPending ? CAT_COLORS[0] : selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
                     borderRadius: 6, padding: "10px 6px",
                     cursor: atLimit ? "default" : "pointer",
                     opacity: atLimit ? 0.38 : 1,
@@ -1755,21 +1738,51 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
                 >
                   <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
                   {selected && (
-                    <div style={{
-                      position: "absolute", top: -6, right: -6,
-                      width: 18, height: 18, borderRadius: "50%",
-                      background: CAT_COLORS[rank % CAT_COLORS.length],
-                      color: CREAM, fontSize: 9, fontWeight: "800",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-                    }}>
-                      {rank + 1}
-                    </div>
+                    <>
+                      <div style={{
+                        position: "absolute", top: -6, right: -6,
+                        width: 18, height: 18, borderRadius: "50%",
+                        background: CAT_COLORS[rank % CAT_COLORS.length],
+                        color: CREAM, fontSize: 9, fontWeight: "800",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                      }}>
+                        {rank + 1}
+                      </div>
+                      <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
+                        ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                      </div>
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
+
+          {/* Pending category amount input */}
+          {pendingCategory && (
+            <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
+              <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+                {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+              </div>
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  autoFocus
+                  placeholder="e.g. 200"
+                  value={pendingAmount}
+                  onChange={e => setPendingAmt(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
+                  type="number" inputMode="numeric"
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+              </div>
+            </div>
+          )}
 
           {/* Custom category chips */}
           {selectedCats.filter(c => c.custom).length > 0 && (
@@ -1854,7 +1867,6 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             essentials,
             downPct: parseFloat(downPct),
             cats: selectedCats,
-            homeIntent: homeIntent.trim(),
           })}
         >
           Save Changes
@@ -1893,6 +1905,14 @@ export default function App() {
   const handleOnboarding = (prof) => { setProfile(prof); saveProfile(prof); setScreen("address"); };
 
   const handleProfileSave = (prof) => { setProfile(prof); saveProfile(prof); setShowProfileEditor(false); };
+
+  const handleCatAmountChange = (catId, newMonthly) => {
+    setProfile(prev => {
+      const updated = { ...prev, cats: prev.cats.map(c => c.id === catId ? { ...c, monthly: newMonthly } : c) };
+      saveProfile(updated);
+      return updated;
+    });
+  };
 
   const handleSearch = (prop) => {
     if (useCount >= 3) { setShowPaywall(true); return; }
@@ -1942,7 +1962,7 @@ export default function App() {
 
       {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
       {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
-      {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} />}
+      {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} />}
       {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
     </div>
   );
