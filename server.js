@@ -42,33 +42,119 @@ app.use(express.json());
 // ── Anthropic client ───────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── Build summary prompt from raw property data ────────────────────────────
-function buildSummaryPrompt({ address, price, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
+// ── Property context helpers ───────────────────────────────────────────────
+function describePropertyType(propertyType) {
+  if (!propertyType) return null;
+  const t = propertyType.toLowerCase();
+  if (t.includes("single family")) return "single-family house";
+  if (t.includes("condo"))         return "condo";
+  if (t.includes("town"))          return "townhouse";
+  if (t.includes("duplex") || t.includes("multi")) return "multi-unit building";
+  if (t.includes("manufactured") || t.includes("mobile")) return "manufactured home";
+  return propertyType.toLowerCase();
+}
+
+function describeLot(lotSize, propertyType) {
+  if (!lotSize || propertyType?.toLowerCase().includes("condo")) return null;
+  if (lotSize < 2000)  return "very small lot";
+  if (lotSize < 4000)  return "small lot";
+  if (lotSize < 7500)  return "modest yard";
+  if (lotSize < 12000) return "decent yard";
+  if (lotSize < 22000) return "large yard";
+  return "very large lot, almost half an acre or more";
+}
+
+function describeAge(yearBuilt) {
+  if (!yearBuilt || yearBuilt < 1800) return null;
+  const age = new Date().getFullYear() - yearBuilt;
+  if (age < 5)   return "newly built";
+  if (age < 20)  return "relatively recent construction";
+  if (age < 40)  return "mid-aged home";
+  if (age < 70)  return "older home, mid-century era";
+  if (age < 100) return "older home, pre-war era";
+  return "very old, historic-era home";
+}
+
+function describeMarketTime(daysOnMarket) {
+  if (daysOnMarket == null) return null;
+  if (daysOnMarket < 7)   return "fresh listing, just hit the market";
+  if (daysOnMarket < 21)  return "moving — under three weeks on the market";
+  if (daysOnMarket < 60)  return "been on the market a few weeks";
+  if (daysOnMarket < 120) return "been on the market a while, may signal pricing or condition issues";
+  return "been on the market a long time, likely pricing or condition issues";
+}
+
+function buildPropertyContext(property) {
+  const parts = [];
+  const type = describePropertyType(property.propertyType);
+  if (type) parts.push(type);
+  const age = describeAge(property.yearBuilt);
+  if (age) parts.push(age);
+  const lot = describeLot(property.lotSize, property.propertyType);
+  if (lot) parts.push(lot);
+  if (property.beds && property.baths) parts.push(`${property.beds} bed, ${property.baths} bath`);
+  if (property.sqft) parts.push(`${Number(property.sqft).toLocaleString("en-US")} sqft`);
+  const market = describeMarketTime(property.daysOnMarket);
+  if (market) parts.push(market);
+  if (property.city && property.state) parts.push(`in ${property.city}, ${property.state}`);
+  return parts.join(" · ") || "details not available";
+}
+
+// ── Build summary prompt — three-dimensional cross-examination ─────────────
+function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
   const recurring     = (cats || []).filter(c => c.kind === "recurring");
   const savings       = (cats || []).filter(c => c.kind === "savings");
   const propertyNeeds = (cats || []).filter(c => c.kind === "property");
   const oneTime       = (cats || []).filter(c => c.kind === "one_time");
-  const recurringStr  = recurring.length     ? recurring.map(c => `${c.label}: $${Math.round(c.monthly)}/mo`).join("; ") : "none";
-  const savingsStr    = savings.length       ? savings.map(c => `${c.label}: saving $${Math.round(c.monthly)}/mo`).join("; ") : "none";
-  const propertyStr   = propertyNeeds.length ? propertyNeeds.map(c => `${c.label}${c.propertyNeed ? ` (needs ${c.propertyNeed})` : ""}`).join("; ") : "none";
-  const oneTimeStr    = oneTime.length       ? oneTime.map(c => c.label).join(", ") : "none";
-  const essLine = essentialsTotal ? `Monthly essentials (savings, healthcare, groceries, etc.): $${Math.round(essentialsTotal).toLocaleString("en-US")}\n` : "";
 
-  return `You are writing a single-paragraph lifestyle summary for LIVABLE, a home affordability app.
+  const recurringStr  = recurring.length
+    ? recurring.map(c => `${c.label}: $${Math.round(c.monthly)}/mo`).join("; ")
+    : "none specified";
+  const savingsStr    = savings.length
+    ? savings.map(c => `${c.label}: saving $${Math.round(c.monthly)}/mo`).join("; ")
+    : "none specified";
+  const propertyStr   = propertyNeeds.length
+    ? propertyNeeds.map(c => `${c.label} — needs ${c.propertyNeed}`).join("; ")
+    : "none specified";
+  const oneTimeStr    = oneTime.length
+    ? oneTime.map(c => c.label).join(", ")
+    : "none specified";
 
-Property: ${address} — $${Number(price).toLocaleString("en-US")} list price
-Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} (${Number(housingPct).toFixed(0)}% of take-home)
-Down payment: ${downPct}% | Rate: ${rate}%
+  const propertyContext = buildPropertyContext(property);
+
+  return `You are writing a single-paragraph home advisor summary for LIVABLE, an app that tells people whether a specific home fits the life they've actually described.
+
+PROPERTY:
+${property.address}
+List price: $${Number(property.price).toLocaleString("en-US")}
+Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} at ${rate}% with ${downPct}% down
+Property profile: ${propertyContext}
+
+USER'S FINANCIAL REALITY:
 Monthly take-home: $${Number(income).toLocaleString("en-US")}
-${essLine}Affordability signal: ${signal?.label || "Unknown"}
+Monthly essentials (savings, healthcare, education, groceries, utilities, transport): $${Math.round(essentialsTotal || 0).toLocaleString("en-US")}
+This house takes ${Number(housingPct).toFixed(0)}% of their take-home pay.
+Financial signal: ${signal?.label || "Unknown"}.
 
-Lifestyle commitments:
-- Recurring monthly: ${recurringStr}
-- Saving toward: ${savingsStr}
-- One-time costs: ${oneTimeStr}
-- Property requirements: ${propertyStr}
+USER'S LIFESTYLE COMMITMENTS, BY KIND:
+Monthly recurring spending: ${recurringStr}
+Monthly savings goals: ${savingsStr}
+One-time things they care about (no real monthly cost): ${oneTimeStr}
+Property requirements (things the HOUSE itself must support): ${propertyStr}
 
-Write ONE short paragraph, 50-70 words. Use the real dollar amounts given. Integrate the math, the lifestyle impact, and the verdict in a single direct statement. Reference 1-2 of the user's specific lifestyle categories by name. If the user has property requirements or one-time costs, weave them in naturally. Take a clear position — this house fits, doesn't fit, or is a real trade-off worth thinking about. Don't hedge. No section headers. No bullet points. No bold markers. Just a single direct paragraph in the voice of a smart friend who knows finance and tells the truth.`;
+YOUR TASK:
+Write ONE direct paragraph, 60-90 words, that does genuine cross-examination across three dimensions:
+1. FINANCIAL FIT — does the math work? Reference 1-2 specific dollar amounts from their commitments where they're most affected.
+2. LIFESTYLE FIT — does this house leave room for what they actually do every month?
+3. PROPERTY FIT — does this house have what they said the home itself needs to support? You have property attributes (lot size, type, age, location). Use them. If a property requirement matches what the house likely offers, say so. If it conflicts, say so. If you genuinely can't tell from available data, acknowledge that briefly rather than guessing.
+
+RULES:
+- Take a clear position. Fits, doesn't fit, or a real trade-off — say which.
+- Reference specific things by name (a specific commitment label, a specific property attribute).
+- Don't invent numbers. Only use values provided.
+- Don't pad. If only two of the three dimensions are interesting for this property, focus there.
+- No section headers. No bullet points. No bold markers. One direct paragraph, plain prose.
+- Voice: smart friend who knows finance and home-buying, tells the truth, doesn't hedge.`;
 }
 
 // ── Port of client-side computeRects for PDF treemap ──────────────────────
@@ -105,11 +191,27 @@ function computeRects(tiles, W, H, gap) {
 
 // ── POST /api/summary — Claude AI summary ─────────────────────────────────
 app.post("/api/summary", async (req, res) => {
-  console.log("[summary] request received", { address: req.body?.address });
+  const body = req.body || {};
+  // Normalize: new clients send { property: {...}, monthlyHousing, ... }
+  // Old clients send flat { address, price, monthlyHousing, ... }
+  const payload = body.property
+    ? body
+    : {
+        ...body,
+        property: {
+          address: body.address,
+          price: body.price,
+          beds: body.beds,
+          baths: body.baths,
+          sqft: body.sqft,
+          yearBuilt: body.yearBuilt,
+        },
+      };
+  console.log("[summary] request received", { address: payload.property?.address });
 
   let prompt;
   try {
-    prompt = req.body?.prompt || buildSummaryPrompt(req.body);
+    prompt = body.prompt || buildSummaryPrompt(payload);
   } catch (buildErr) {
     console.warn("[summary] failed to build prompt:", buildErr.message);
     return res.status(400).json({ summary: "", error: "malformed request: " + buildErr.message });
@@ -250,14 +352,25 @@ app.get("/api/property", async (req, res) => {
       const listing = Array.isArray(listings) ? listings[0] : null;
       console.log("[Rentcast] Listing result:", JSON.stringify(listing));
       if (listing?.price) {
-        return res.json({
+        const result = {
           address: listing.formattedAddress || address,
           price: listing.price,
           beds: listing.bedrooms || 0,
           baths: listing.bathrooms || 0,
           sqft: listing.squareFootage || 0,
           yearBuilt: listing.yearBuilt || 0,
-        });
+        };
+        if (listing.lotSize)           result.lotSize       = listing.lotSize;
+        if (listing.propertyType)      result.propertyType  = listing.propertyType;
+        if (listing.daysOnMarket != null) result.daysOnMarket = listing.daysOnMarket;
+        if (listing.listedDate)        result.listedDate    = listing.listedDate;
+        if (listing.county)            result.county        = listing.county;
+        if (listing.city)              result.city          = listing.city;
+        if (listing.state)             result.state         = listing.state;
+        if (listing.zipCode)           result.zipCode       = listing.zipCode;
+        if (listing.latitude != null)  result.latitude      = listing.latitude;
+        if (listing.longitude != null) result.longitude     = listing.longitude;
+        return res.json(result);
       }
     }
 
