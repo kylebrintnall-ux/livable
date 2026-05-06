@@ -14,14 +14,16 @@ function loadProfile() {
       parsed.cats = parsed.cats.map(c => {
         if (typeof c === "string") {
           const def = CATS.find(d => d.id === c);
-          return { id: c, label: def?.label || c, monthly: 0, custom: false };
+          return { id: c, label: def?.label || c, kind: "recurring", monthly: 0, custom: false, propertyNeed: null };
         }
         const def = CATS.find(d => d.id === c.id);
         return {
-          ...c,
+          id: c.id,
           label: c.label || def?.label || c.id,
-          monthly: typeof c.monthly === "number" ? c.monthly : 0,
           custom: c.custom ?? false,
+          kind: c.kind || "recurring",
+          monthly: typeof c.monthly === "number" ? c.monthly : 0,
+          propertyNeed: c.propertyNeed || null,
         };
       });
     }
@@ -51,6 +53,22 @@ const NEEDS_COLOR   = "#5a4e8a";
 const CAT_COLORS    = ["#3B7FC4","#4A9B6F","#E8A030","#D4505A","#3A9EA5","#C4963B","#7B5EA7","#D97B3A"];
 
 const MOBILE_MAX = 430;
+
+function darkenHex(hex, amt = 30) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (n >> 16) - amt);
+  const g = Math.max(0, ((n >> 8) & 0xff) - amt);
+  const b = Math.max(0, (n & 0xff) - amt);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+function catKindSublabel(cat) {
+  if (!cat) return "";
+  if (cat.kind === "savings") return `saving $${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+  if (cat.kind === "one_time") return "one-time cost";
+  if (cat.kind === "property") return cat.propertyNeed ? `needs ${cat.propertyNeed}` : "property need";
+  return `$${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+}
 
 // ── Mortgage math ──────────────────────────────────────────────────────────
 function monthlyPayment(price, downPct, annualRate) {
@@ -188,28 +206,45 @@ function OnboardingScreen({ onDone }) {
   const [income, setIncome]         = useState("");
   const [essentials, setEssentials] = useState({});
   const [downPct, setDownPct]       = useState("10");
-  const [selectedCats, setSelected]       = useState([]);
-  const [pendingCategory, setPendingCat]  = useState(null);
-  const [pendingAmount, setPendingAmt]    = useState("");
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [customLabel, setCustomLabel]         = useState("");
-  const [customAmount, setCustomAmount]       = useState("");
+  const [selectedCats, setSelected]        = useState([]);
+  const [pendingCategory, setPendingCat]   = useState(null); // { id, label } | null
+  const [pendingKind, setPendingKind]      = useState(null);
+  const [pendingAmount, setPendingAmt]     = useState("");
+  const [pendingPropertyNeed, setPendingPN] = useState("");
+  const [customKind, setCustomKind]        = useState(null); // null=hidden, "label", "selecting", or kind
+  const [customLabel, setCustomLabel]      = useState("");
+  const [customAmount, setCustomAmount]    = useState("");
+  const [customPropertyNeed, setCustomPN]  = useState("");
   const MAX_CATS = 5;
+
+  const cancelPending = () => { setPendingCat(null); setPendingKind(null); setPendingAmt(""); setPendingPN(""); };
 
   const toggleCat = (id) => {
     const existingIdx = selectedCats.findIndex(c => c.id === id);
     if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
     if (selectedCats.length >= MAX_CATS) return;
-    setPendingCat(id);
-    setPendingAmt("");
+    const def = CATS.find(c => c.id === id);
+    setPendingCat({ id, label: def?.label || id });
+    setPendingKind(null); setPendingAmt(""); setPendingPN("");
   };
 
-  const confirmPending = () => {
-    if (!pendingCategory || !pendingAmount) return;
-    const def = CATS.find(c => c.id === pendingCategory);
-    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
-    setPendingCat(null);
-    setPendingAmt("");
+  const selectKind = (kind) => {
+    if (kind === "one_time") {
+      setSelected(prev => [...prev, { id: pendingCategory.id, label: pendingCategory.label, custom: false, kind: "one_time", monthly: null, propertyNeed: null }]);
+      cancelPending(); return;
+    }
+    setPendingKind(kind);
+  };
+
+  const confirmPendingPick = () => {
+    if (!pendingCategory || !pendingKind) return;
+    const cat = {
+      id: pendingCategory.id, label: pendingCategory.label, custom: false, kind: pendingKind,
+      monthly: (pendingKind === "recurring" || pendingKind === "savings") ? (parseFloat(pendingAmount) || 0) : null,
+      propertyNeed: pendingKind === "property" ? (pendingPropertyNeed.trim() || null) : null,
+    };
+    setSelected(prev => [...prev, cat]);
+    cancelPending();
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -318,7 +353,7 @@ function OnboardingScreen({ onDone }) {
           {CATS.map((cat) => {
             const rank = selectedCats.findIndex(c => c.id === cat.id);
             const selected = rank !== -1;
-            const isPending = pendingCategory === cat.id;
+            const isPending = pendingCategory?.id === cat.id;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
             return (
               <div
@@ -348,7 +383,7 @@ function OnboardingScreen({ onDone }) {
                       {rank + 1}
                     </div>
                     <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
-                      ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                      {catKindSublabel(selectedCats[rank])}
                     </div>
                   </>
                 )}
@@ -357,28 +392,64 @@ function OnboardingScreen({ onDone }) {
           })}
         </div>
 
-        {/* Pending category amount input */}
+        {/* Pending category — 3-stage kind flow */}
         {pendingCategory && (
           <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
             <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
-              {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+              {pendingCategory.label} — how does it show up in your life?
             </div>
-            <div style={{ position: "relative", marginBottom: 8 }}>
-              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
-              <input
-                autoFocus
-                placeholder="e.g. 200"
-                value={pendingAmount}
-                onChange={e => setPendingAmt(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
-                type="number" inputMode="numeric"
-                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
-              <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
-            </div>
+            {pendingKind === null ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[
+                  { kind: "recurring", label: "Recurring monthly", sub: "Coffee, gym, dining out..." },
+                  { kind: "savings",   label: "Saving toward it",  sub: "Vacation fund, gear savings..." },
+                  { kind: "one_time",  label: "One-time cost",     sub: "Gear purchase, trip, event..." },
+                  { kind: "property",  label: "Property requirement", sub: "Yard, garage, extra room..." },
+                ].map(({ kind, label, sub }) => (
+                  <div key={kind} onClick={() => selectKind(kind)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "rgba(255,255,255,0.5)", border: "1.5px solid rgba(100,90,60,0.2)", borderRadius: 5, cursor: "pointer" }}>
+                    <div style={{ fontSize: 10, fontWeight: "700", color: INK }}>{label}</div>
+                    <div style={{ fontSize: 8, color: MUTED }}>{sub}</div>
+                  </div>
+                ))}
+                <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+              </div>
+            ) : pendingKind === "property" ? (
+              <>
+                <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>What does {pendingCategory.label} need from the home?</div>
+                <input
+                  autoFocus
+                  placeholder="e.g. large yard, garage, extra bedroom..."
+                  value={pendingPropertyNeed}
+                  onChange={e => setPendingPN(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && pendingPropertyNeed.trim()) confirmPendingPick(); if (e.key === "Escape") cancelPending(); }}
+                  style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={confirmPendingPick} disabled={!pendingPropertyNeed.trim()} style={{ ...btnPrimary(!pendingPropertyNeed.trim()), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                  <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>{pendingKind === "savings" ? "How much are you saving per month?" : "Monthly budget?"}</div>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                  <input
+                    autoFocus
+                    placeholder="e.g. 200"
+                    value={pendingAmount}
+                    onChange={e => setPendingAmt(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") confirmPendingPick(); if (e.key === "Escape") cancelPending(); }}
+                    type="number" inputMode="numeric"
+                    style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={confirmPendingPick} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                  <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -396,7 +467,7 @@ function OnboardingScreen({ onDone }) {
                   borderRadius: 14, fontSize: 11, fontWeight: "700",
                   color: CAT_COLORS[rank % CAT_COLORS.length],
                 }}>
-                  {rank + 1} {c.label} · ${c.monthly}/mo
+                  {rank + 1} {c.label} · {catKindSublabel(c)}
                   <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
                 </div>
               );
@@ -404,10 +475,10 @@ function OnboardingScreen({ onDone }) {
           </div>
         )}
 
-        {/* Add your own */}
-        {selectedCats.length < MAX_CATS && !showCustomInput && (
+        {/* Add your own — staged flow */}
+        {selectedCats.length < MAX_CATS && customKind === null && (
           <div
-            onClick={() => setShowCustomInput(true)}
+            onClick={() => setCustomKind("label")}
             style={{
               marginTop: 8, padding: "10px 6px",
               background: "rgba(255,255,255,0.38)",
@@ -420,39 +491,108 @@ function OnboardingScreen({ onDone }) {
             + Add your own
           </div>
         )}
-        {showCustomInput && (
+        {customKind !== null && (
           <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
-            <input
-              placeholder="e.g. Kids' activities"
-              value={customLabel}
-              onChange={e => setCustomLabel(e.target.value)}
-              style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
-            />
-            <div style={{ position: "relative", marginBottom: 8 }}>
-              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
-              <input
-                placeholder="350"
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value)}
-                type="number" inputMode="numeric"
-                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
-              />
+            {customKind === "label" ? (
+              <>
+                <input
+                  autoFocus
+                  placeholder="e.g. Kids' activities"
+                  value={customLabel}
+                  onChange={e => setCustomLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && customLabel.trim()) setCustomKind("selecting"); if (e.key === "Escape") { setCustomKind(null); setCustomLabel(""); } }}
+                  style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { if (customLabel.trim()) setCustomKind("selecting"); }} disabled={!customLabel.trim()} style={{ ...btnPrimary(!customLabel.trim()), padding: "8px 14px", fontSize: 9 }}>Next →</button>
+                  <button onClick={() => { setCustomKind(null); setCustomLabel(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                </div>
+              </>
+            ) : customKind === "selecting" ? (
+              <>
+                <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>{customLabel} — what kind?</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[
+                    { kind: "recurring", label: "Recurring monthly" },
+                    { kind: "savings",   label: "Saving toward it" },
+                    { kind: "one_time",  label: "One-time cost" },
+                    { kind: "property",  label: "Property requirement" },
+                  ].map(({ kind, label }) => (
+                    <div key={kind} onClick={() => {
+                      if (kind === "one_time") {
+                        const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "one_time", monthly: null, propertyNeed: null };
+                        setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                        setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN(""); return;
+                      }
+                      setCustomKind(kind);
+                    }} style={{ padding: "9px 12px", background: "rgba(255,255,255,0.5)", border: "1.5px solid rgba(100,90,60,0.2)", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: "700", color: INK }}>
+                      {label}
+                    </div>
+                  ))}
+                  <button onClick={() => { setCustomKind("label"); setCustomAmount(""); setCustomPN(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                </div>
+              </>
+            ) : customKind === "property" ? (
+              <>
+                <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>What does {customLabel} need from the home?</div>
+                <input
+                  autoFocus
+                  placeholder="e.g. large yard, extra bedroom..."
+                  value={customPropertyNeed}
+                  onChange={e => setCustomPN(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && customPropertyNeed.trim()) {
+                      const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "property", monthly: null, propertyNeed: customPropertyNeed.trim() };
+                      setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                      setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                    }
+                    if (e.key === "Escape") setCustomKind("selecting");
+                  }}
+                  style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => {
+                    if (!customPropertyNeed.trim()) return;
+                    const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "property", monthly: null, propertyNeed: customPropertyNeed.trim() };
+                    setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                    setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                  }} disabled={!customPropertyNeed.trim()} style={{ ...btnPrimary(!customPropertyNeed.trim()), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                  <button onClick={() => setCustomKind("selecting")} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>{customKind === "savings" ? "Saving per month?" : "Monthly budget?"}</div>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                  <input
+                    autoFocus
+                    placeholder="350"
+                    value={customAmount}
+                    onChange={e => setCustomAmount(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && customAmount) {
+                        const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: customKind, monthly: parseFloat(customAmount) || 0, propertyNeed: null };
+                        setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                        setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                      }
+                      if (e.key === "Escape") setCustomKind("selecting");
+                    }}
+                    type="number" inputMode="numeric"
+                    style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                  />
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => {
-                  if (!customLabel.trim() || !customAmount) return;
-                  const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
-                  setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
-                  setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
-                }}
-                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
-              >Add</button>
-              <button
-                onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
-                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
-              >Cancel</button>
-            </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => {
+                    if (!customAmount) return;
+                    const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: customKind, monthly: parseFloat(customAmount) || 0, propertyNeed: null };
+                    setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                    setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                  }} disabled={!customAmount} style={{ ...btnPrimary(!customAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                  <button onClick={() => setCustomKind("selecting")} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -646,16 +786,18 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
     const insurance = Math.round(property.price * 0.005 / 12);
     const housingMonthly = payment + pmi + taxes + insurance;
 
+    const treemapCats = profile.cats.filter(c => c.kind === "recurring" || c.kind === "savings");
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
       { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, 1), locked: true, color: NEEDS_COLOR },
-      ...profile.cats.map((cat, i) => ({
+      ...treemapCats.map((cat, i) => ({
         id: cat.id,
         label: cat.label,
         value: Math.max(cat.monthly || 0, 1),
         color: CAT_COLORS[i % CAT_COLORS.length],
         locked: false,
         custom: cat.custom,
+        kind: cat.kind,
       })),
     ]);
   }, [property, profile, rate, downPct, inc]);
@@ -683,6 +825,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
     };
   }, []);
 
+  const nonTreemapCats = profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings");
   const housingTile = tiles.find(t => t.id === "housing");
   const housingPct  = housingTile ? (housingTile.value / inc) * 100 : 0;
   const signal      = getSignal(housingPct);
@@ -985,7 +1128,9 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
                 position: "absolute",
                 left: rect.x, top: rect.y,
                 width: Math.max(0, rect.w), height: Math.max(0, rect.h),
-                background: tile.color,
+                background: tile.kind === "savings"
+                  ? `repeating-linear-gradient(45deg, ${tile.color}, ${tile.color} 6px, ${darkenHex(tile.color, 25)} 6px, ${darkenHex(tile.color, 25)} 12px)`
+                  : tile.color,
                 borderRadius: 8,
                 transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
@@ -1151,6 +1296,27 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
             })()}
           </div>
         </div>
+
+        {nonTreemapCats.length > 0 && (
+          <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.4)", borderRadius: 6 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+              Also matters to you
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {nonTreemapCats.map(c => (
+                <div key={c.id} style={{ padding: "4px 8px", background: "rgba(255,255,255,0.5)", border: "1px solid rgba(100,90,60,0.25)", borderRadius: 12, fontSize: 10, color: INK }}>
+                  {c.label}
+                  {c.kind === "property" && c.propertyNeed && (
+                    <span style={{ color: MUTED, marginLeft: 4 }}>· needs {c.propertyNeed}</span>
+                  )}
+                  {c.kind === "one_time" && (
+                    <span style={{ color: MUTED, marginLeft: 4 }}>· one-time</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 10 }}>
           <button
@@ -1372,7 +1538,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
       essentialsTotal: profile.essentialsTotal,
       housingPct,
       signal,
-      cats: profile.cats.map(c => ({ label: c.label, monthly: c.monthly })),
+      cats: profile.cats.map(c => ({ label: c.label, kind: c.kind, monthly: c.monthly || null, propertyNeed: c.propertyNeed || null })),
       downPct,
       rate,
     }).then(text => {
@@ -1602,28 +1768,45 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
   const [income, setIncome]         = useState(profile.income.toString());
   const [essentials, setEssentials] = useState(profile.essentials || {});
   const [downPct, setDownPct]       = useState(profile.downPct.toString());
-  const [selectedCats, setSelected]       = useState(profile.cats);
-  const [pendingCategory, setPendingCat]  = useState(null);
-  const [pendingAmount, setPendingAmt]    = useState("");
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [customLabel, setCustomLabel]         = useState("");
-  const [customAmount, setCustomAmount]       = useState("");
+  const [selectedCats, setSelected]        = useState(profile.cats);
+  const [pendingCategory, setPendingCat]   = useState(null); // { id, label } | null
+  const [pendingKind, setPendingKind]      = useState(null);
+  const [pendingAmount, setPendingAmt]     = useState("");
+  const [pendingPropertyNeed, setPendingPN] = useState("");
+  const [customKind, setCustomKind]        = useState(null); // null=hidden, "label", "selecting", or kind
+  const [customLabel, setCustomLabel]      = useState("");
+  const [customAmount, setCustomAmount]    = useState("");
+  const [customPropertyNeed, setCustomPN]  = useState("");
   const MAX_CATS = 5;
+
+  const cancelPending = () => { setPendingCat(null); setPendingKind(null); setPendingAmt(""); setPendingPN(""); };
 
   const toggleCat = (id) => {
     const existingIdx = selectedCats.findIndex(c => c.id === id);
     if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
     if (selectedCats.length >= MAX_CATS) return;
-    setPendingCat(id);
-    setPendingAmt("");
+    const def = CATS.find(c => c.id === id);
+    setPendingCat({ id, label: def?.label || id });
+    setPendingKind(null); setPendingAmt(""); setPendingPN("");
   };
 
-  const confirmPending = () => {
-    if (!pendingCategory || !pendingAmount) return;
-    const def = CATS.find(c => c.id === pendingCategory);
-    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
-    setPendingCat(null);
-    setPendingAmt("");
+  const selectKind = (kind) => {
+    if (kind === "one_time") {
+      setSelected(prev => [...prev, { id: pendingCategory.id, label: pendingCategory.label, custom: false, kind: "one_time", monthly: null, propertyNeed: null }]);
+      cancelPending(); return;
+    }
+    setPendingKind(kind);
+  };
+
+  const confirmPendingPick = () => {
+    if (!pendingCategory || !pendingKind) return;
+    const cat = {
+      id: pendingCategory.id, label: pendingCategory.label, custom: false, kind: pendingKind,
+      monthly: (pendingKind === "recurring" || pendingKind === "savings") ? (parseFloat(pendingAmount) || 0) : null,
+      propertyNeed: pendingKind === "property" ? (pendingPropertyNeed.trim() || null) : null,
+    };
+    setSelected(prev => [...prev, cat]);
+    cancelPending();
   };
 
   const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
@@ -1720,7 +1903,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             {CATS.map((cat) => {
               const rank = selectedCats.findIndex(c => c.id === cat.id);
               const selected = rank !== -1;
-              const isPending = pendingCategory === cat.id;
+              const isPending = pendingCategory?.id === cat.id;
               const atLimit = selectedCats.length >= MAX_CATS && !selected;
               return (
                 <div
@@ -1750,7 +1933,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
                         {rank + 1}
                       </div>
                       <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
-                        ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                        {catKindSublabel(selectedCats[rank])}
                       </div>
                     </>
                   )}
@@ -1759,28 +1942,64 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             })}
           </div>
 
-          {/* Pending category amount input */}
+          {/* Pending category — 3-stage kind flow */}
           {pendingCategory && (
             <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
               <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
-                {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+                {pendingCategory.label} — how does it show up in your life?
               </div>
-              <div style={{ position: "relative", marginBottom: 8 }}>
-                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
-                <input
-                  autoFocus
-                  placeholder="e.g. 200"
-                  value={pendingAmount}
-                  onChange={e => setPendingAmt(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
-                  type="number" inputMode="numeric"
-                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
-                <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
-              </div>
+              {pendingKind === null ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[
+                    { kind: "recurring", label: "Recurring monthly", sub: "Coffee, gym, dining out..." },
+                    { kind: "savings",   label: "Saving toward it",  sub: "Vacation fund, gear savings..." },
+                    { kind: "one_time",  label: "One-time cost",     sub: "Gear purchase, trip, event..." },
+                    { kind: "property",  label: "Property requirement", sub: "Yard, garage, extra room..." },
+                  ].map(({ kind, label, sub }) => (
+                    <div key={kind} onClick={() => selectKind(kind)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "rgba(255,255,255,0.5)", border: "1.5px solid rgba(100,90,60,0.2)", borderRadius: 5, cursor: "pointer" }}>
+                      <div style={{ fontSize: 10, fontWeight: "700", color: INK }}>{label}</div>
+                      <div style={{ fontSize: 8, color: MUTED }}>{sub}</div>
+                    </div>
+                  ))}
+                  <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                </div>
+              ) : pendingKind === "property" ? (
+                <>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>What does {pendingCategory.label} need from the home?</div>
+                  <input
+                    autoFocus
+                    placeholder="e.g. large yard, garage, extra bedroom..."
+                    value={pendingPropertyNeed}
+                    onChange={e => setPendingPN(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && pendingPropertyNeed.trim()) confirmPendingPick(); if (e.key === "Escape") cancelPending(); }}
+                    style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={confirmPendingPick} disabled={!pendingPropertyNeed.trim()} style={{ ...btnPrimary(!pendingPropertyNeed.trim()), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                    <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>{pendingKind === "savings" ? "How much are you saving per month?" : "Monthly budget?"}</div>
+                  <div style={{ position: "relative", marginBottom: 8 }}>
+                    <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                    <input
+                      autoFocus
+                      placeholder="e.g. 200"
+                      value={pendingAmount}
+                      onChange={e => setPendingAmt(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") confirmPendingPick(); if (e.key === "Escape") cancelPending(); }}
+                      type="number" inputMode="numeric"
+                      style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={confirmPendingPick} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                    <button onClick={cancelPending} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1798,7 +2017,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
                     borderRadius: 14, fontSize: 11, fontWeight: "700",
                     color: CAT_COLORS[rank % CAT_COLORS.length],
                   }}>
-                    {rank + 1} {c.label} · ${c.monthly}/mo
+                    {rank + 1} {c.label} · {catKindSublabel(c)}
                     <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
                   </div>
                 );
@@ -1806,10 +2025,10 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
             </div>
           )}
 
-          {/* Add your own */}
-          {selectedCats.length < MAX_CATS && !showCustomInput && (
+          {/* Add your own — staged flow */}
+          {selectedCats.length < MAX_CATS && customKind === null && (
             <div
-              onClick={() => setShowCustomInput(true)}
+              onClick={() => setCustomKind("label")}
               style={{
                 marginTop: 8, padding: "10px 6px",
                 background: "rgba(255,255,255,0.38)",
@@ -1822,39 +2041,108 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
               + Add your own
             </div>
           )}
-          {showCustomInput && (
+          {customKind !== null && (
             <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
-              <input
-                placeholder="e.g. Kids' activities"
-                value={customLabel}
-                onChange={e => setCustomLabel(e.target.value)}
-                style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
-              />
-              <div style={{ position: "relative", marginBottom: 8 }}>
-                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
-                <input
-                  placeholder="350"
-                  value={customAmount}
-                  onChange={e => setCustomAmount(e.target.value)}
-                  type="number" inputMode="numeric"
-                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => {
-                    if (!customLabel.trim() || !customAmount) return;
-                    const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
-                    setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
-                    setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
-                  }}
-                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
-                >Add</button>
-                <button
-                  onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
-                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
-                >Cancel</button>
-              </div>
+              {customKind === "label" ? (
+                <>
+                  <input
+                    autoFocus
+                    placeholder="e.g. Kids' activities"
+                    value={customLabel}
+                    onChange={e => setCustomLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && customLabel.trim()) setCustomKind("selecting"); if (e.key === "Escape") { setCustomKind(null); setCustomLabel(""); } }}
+                    style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { if (customLabel.trim()) setCustomKind("selecting"); }} disabled={!customLabel.trim()} style={{ ...btnPrimary(!customLabel.trim()), padding: "8px 14px", fontSize: 9 }}>Next →</button>
+                    <button onClick={() => { setCustomKind(null); setCustomLabel(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+                  </div>
+                </>
+              ) : customKind === "selecting" ? (
+                <>
+                  <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>{customLabel} — what kind?</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[
+                      { kind: "recurring", label: "Recurring monthly" },
+                      { kind: "savings",   label: "Saving toward it" },
+                      { kind: "one_time",  label: "One-time cost" },
+                      { kind: "property",  label: "Property requirement" },
+                    ].map(({ kind, label }) => (
+                      <div key={kind} onClick={() => {
+                        if (kind === "one_time") {
+                          const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "one_time", monthly: null, propertyNeed: null };
+                          setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                          setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN(""); return;
+                        }
+                        setCustomKind(kind);
+                      }} style={{ padding: "9px 12px", background: "rgba(255,255,255,0.5)", border: "1.5px solid rgba(100,90,60,0.2)", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: "700", color: INK }}>
+                        {label}
+                      </div>
+                    ))}
+                    <button onClick={() => { setCustomKind("label"); setCustomAmount(""); setCustomPN(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                  </div>
+                </>
+              ) : customKind === "property" ? (
+                <>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>What does {customLabel} need from the home?</div>
+                  <input
+                    autoFocus
+                    placeholder="e.g. large yard, extra bedroom..."
+                    value={customPropertyNeed}
+                    onChange={e => setCustomPN(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && customPropertyNeed.trim()) {
+                        const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "property", monthly: null, propertyNeed: customPropertyNeed.trim() };
+                        setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                        setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                      }
+                      if (e.key === "Escape") setCustomKind("selecting");
+                    }}
+                    style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => {
+                      if (!customPropertyNeed.trim()) return;
+                      const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: "property", monthly: null, propertyNeed: customPropertyNeed.trim() };
+                      setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                      setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                    }} disabled={!customPropertyNeed.trim()} style={{ ...btnPrimary(!customPropertyNeed.trim()), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                    <button onClick={() => setCustomKind("selecting")} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 6 }}>{customKind === "savings" ? "Saving per month?" : "Monthly budget?"}</div>
+                  <div style={{ position: "relative", marginBottom: 8 }}>
+                    <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                    <input
+                      autoFocus
+                      placeholder="350"
+                      value={customAmount}
+                      onChange={e => setCustomAmount(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && customAmount) {
+                          const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: customKind, monthly: parseFloat(customAmount) || 0, propertyNeed: null };
+                          setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                          setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                        }
+                        if (e.key === "Escape") setCustomKind("selecting");
+                      }}
+                      type="number" inputMode="numeric"
+                      style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => {
+                      if (!customAmount) return;
+                      const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), custom: true, kind: customKind, monthly: parseFloat(customAmount) || 0, propertyNeed: null };
+                      setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                      setCustomKind(null); setCustomLabel(""); setCustomAmount(""); setCustomPN("");
+                    }} disabled={!customAmount} style={{ ...btnPrimary(!customAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                    <button onClick={() => setCustomKind("selecting")} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>← Back</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

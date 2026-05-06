@@ -37,7 +37,7 @@ Deployed on Railway. Live at livable.app.
 
 ## Backend routes (`server.js`)
 - `GET /api/property?address=...` → Rentcast lookup → `{ address, price, beds, baths, sqft, yearBuilt }`
-- `POST /api/summary` → body `{ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }` → Claude generates 3-paragraph summary → `{ text }`
+- `POST /api/summary` → body `{ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }` → `cats` is array of `{ label, kind, monthly, propertyNeed }` — Claude generates ONE paragraph (50-70 words) → `{ text }`. Four kind strings split into separate prompt blocks.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
@@ -70,12 +70,45 @@ Vite dev proxy: `/api/*` → `http://localhost:3001` (set in `vite.config.js`).
 ```
 Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentials (the `needs` tile, id: "needs", label: "Essentials", color: NEEDS_COLOR #5a4e8a).
 
+## Essentials model
+Onboarding collects six individual dollar inputs: savings, healthcare, education, groceries, gas/transport, utilities. These are tracked as `profile.essentials` (object) and summed into `profile.essentialsTotal` (number). The treemap shows ONE Essentials tile (`id: "needs"`, label: "Essentials", color: NEEDS_COLOR #5a4e8a) whose value is `essentialsTotal`. The breakdown is for input granularity only.
+
+## Profile editor
+The `ProfileEditorOverlay` component renders all onboarding inputs pre-filled with current values (income, six essentials, down payment %, lifestyle categories). Opened via avatar icon top-right on AddressScreen. Saving calls `setProfile` in App root and closes the overlay. The wordmark on both onboarding and address screens has no slogan underneath.
+
+## Profile persistence
+Profile is saved to `localStorage` under key `livable:profile:v1` on first completion and on every profile editor save. On app load, `loadProfile()` hydrates the profile and skips onboarding if a valid profile is found. The "Start over" link in ProfileEditorOverlay calls `clearProfile()` and resets to onboarding. Migration: old profiles with string cats auto-migrate to full objects; Round 5 cats without `kind` default to `kind: "recurring"`.
+
+## Lifestyle categories — `kind` field (Round 6)
+`profile.cats` is an array of objects: `{ id, label, custom, kind, monthly, propertyNeed }`
+
+Four kinds:
+- `"recurring"` — monthly spend (e.g. dining, gym). Has `monthly`. Shown in treemap.
+- `"savings"` — monthly saving toward a goal. Has `monthly`. Shown in treemap with diagonal stripe pattern.
+- `"one_time"` — a one-time cost (gear, trip, event). `monthly: null`. NOT in treemap.
+- `"property"` — a physical requirement from the home (yard, garage, extra room). `monthly: null`, `propertyNeed: string`. NOT in treemap.
+
+Treemap only shows `kind === "recurring"` and `kind === "savings"` tiles. `savings` tiles get a diagonal stripe via `repeating-linear-gradient` using `darkenHex(color, 25)`.
+
+Non-treemap cats (`one_time` + `property`) appear in an "Also matters to you" pill row below the verdict in MapScreen.
+
+3-stage pick flow (OnboardingScreen + ProfileEditorOverlay):
+1. Tap cat → show 4 kind buttons
+2. Select kind → show detail input (amount for recurring/savings; property need string for property; one_time auto-confirms)
+3. Confirm → cat added with full shape
+
+Custom cat adds a label stage before kind selection.
+
+Helper functions:
+- `darkenHex(hex, amt)` — darkens a hex color by `amt` per channel
+- `catKindSublabel(cat)` — returns display sub-label string for a cat object
+
 ## Key implementation notes
 - Treemap layout: housing tile pinned left, lifestyle tiles grid 3-per-row on right
 - Edge drag: `dragRef` holds drag state; RAF-throttled `moveEdge`; proportional value transfer
-- `TAPER = [0.30, 0.22, 0.17, 0.13, 0.10, 0.08]` weights lifestyle categories by rank
 - Scroll lock: treemap container blocks `touchmove`/`wheel`/gesture events only (not touchstart/touchend — those would break taps)
 - AI summary caching: keyed on address + housingPct + rate + downPct + tile values; cached in `cachedSummary` state
+- `nonTreemapCats` computed in MapScreen as `profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings")`
 
 ## Platform strategy
 - PWA is for prototyping only. The real target is native iOS, then Android.
@@ -89,3 +122,4 @@ Savings, Healthcare, Education, Family are NOT in CATS — they live in Essentia
 - [x] Express 5 catch-all route compatibility
 - [x] iOS input zoom: all inputs use fontSize 16 (iOS zooms inputs below 16px)
 - [x] Onboarding model: CATS replaced with 9 discretionary-only lifestyle categories; "Needs" renamed "Essentials" throughout; onboarding label updated to clarify essentials includes savings/healthcare/education
+- [x] Round 6: cat kind field (recurring/savings/one_time/property); 3-stage pick flow; treemap filtered to recurring+savings; savings stripe; nonTreemapCats section; four-kind AI prompt
