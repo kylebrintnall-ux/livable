@@ -101,7 +101,7 @@ function buildPropertyContext(property) {
 }
 
 // ── Build summary prompt — three-dimensional cross-examination ─────────────
-function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
+function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, verdict, signal, cats, downPct, rate }) {
   const recurring     = (cats || []).filter(c => c.kind === "recurring");
   const savings       = (cats || []).filter(c => c.kind === "savings");
   const propertyNeeds = (cats || []).filter(c => c.kind === "property");
@@ -134,7 +134,7 @@ USER'S FINANCIAL REALITY:
 Monthly take-home: $${Number(income).toLocaleString("en-US")}
 Monthly essentials (savings, healthcare, education, groceries, utilities, transport): $${Math.round(essentialsTotal || 0).toLocaleString("en-US")}
 This house takes ${Number(housingPct).toFixed(0)}% of their take-home pay.
-Financial signal: ${signal?.label || "Unknown"}.
+Verdict: ${verdict?.label || signal?.label || "Unknown"} (financial fit ${verdict?.financial ?? "??"}/100, lifestyle fit ${verdict?.lifestyle ?? "??"}/100, property fit ${verdict?.property ?? "??"}/100).
 
 USER'S LIFESTYLE COMMITMENTS, BY KIND:
 Monthly recurring spending: ${recurringStr}
@@ -242,8 +242,9 @@ app.post("/api/summary", async (req, res) => {
 
 // ── POST /api/pdf — generate PDF report ───────────────────────────────────
 app.post("/api/pdf", async (req, res) => {
-  const { property, tiles, signal, housingPct, rate, downPct, summary, income } = req.body;
-  if (!property || !tiles || !signal) return res.status(400).json({ error: "Missing required fields" });
+  const { property, tiles, verdict, signal, housingPct, rate, downPct, summary, income } = req.body;
+  if (!property || !tiles || !(verdict || signal)) return res.status(400).json({ error: "Missing required fields" });
+  const displayVerdict = verdict || { label: signal?.label || "Unknown", color: signal?.color || "#4A9B6F" };
 
   const h = React.createElement;
   const paragraphs = summary ? summary.split("\n\n").filter(Boolean) : [];
@@ -296,8 +297,8 @@ app.post("/api/pdf", async (req, res) => {
         h(Text, { style: pdfS.brand }, "LIVABLE"),
         h(Text, { style: pdfS.tagline }, "HOME · BUDGET · LIFE")
       ),
-      h(View, { style: [pdfS.badge, { backgroundColor: signal.color }] },
-        h(Text, { style: pdfS.badgeLabel }, signal.label.toUpperCase()),
+      h(View, { style: [pdfS.badge, { backgroundColor: displayVerdict.color }] },
+        h(Text, { style: pdfS.badgeLabel }, displayVerdict.label.toUpperCase()),
         h(Text, { style: pdfS.badgePct }, `${Number(housingPct).toFixed(0)}% of income`)
       )
     ),
