@@ -1464,11 +1464,12 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
               const isUnalloc = tile.id === "unallocated";
               const pct = (tile.value / inc * 100).toFixed(0);
 
-              const showLabel  = !isUnalloc && rect.w >= 60 && rect.h >= 40;
-              const showPct    = rect.w >= 40 && rect.h >= 30;
-              const showDollar = !isUnalloc && rect.w >= 80 && rect.h >= 60;
-              const showCorner = rect.w >= 80 && rect.h >= 60; // icon + pencil corner
-              const pctSize = Math.min(28, Math.max(11, Math.min(rect.w / 2.5, rect.h / 2.0)));
+              const showLabel  = !isUnalloc && rect.w >= 54 && rect.h >= 34;
+              const showPct    = !isUnalloc && rect.w >= 28 && rect.h >= 22;
+              const showDollar = !isUnalloc && rect.w >= 60 && rect.h >= 44;
+              const showCorner = rect.w >= 80 && rect.h >= 60;
+              const showUnallocLabel = isUnalloc && rect.w >= 60 && rect.h >= 28;
+              const pctSize = Math.min(28, Math.max(9, Math.min(rect.w / 2.4, rect.h / 1.9)));
 
               return (
                 <div
@@ -1496,18 +1497,28 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
                   }}
                 >
                   {showLabel && (
-                    <div style={{ fontSize: 8, fontWeight: "700", color: "rgba(250,245,232,0.72)", letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1 }}>
+                    <div style={{ fontSize: Math.max(7, Math.min(9, pctSize * 0.42)), fontWeight: "700", color: "rgba(250,245,232,0.72)", letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1 }}>
                       {tile.label}
                     </div>
                   )}
-                  {showPct && !isUnalloc && (
+                  {showPct && (
                     <div style={{ fontSize: pctSize, fontWeight: "800", color: CREAM, lineHeight: 1 }}>{pct}%</div>
                   )}
                   {!showPct && !isUnalloc && (
-                    <CategoryIcon category={tile.id} size={12} color={CREAM} />
+                    <CategoryIcon category={tile.id} size={Math.min(14, Math.max(8, Math.min(rect.w * 0.32, rect.h * 0.32)))} color={CREAM} />
                   )}
                   {showDollar && (
-                    <div style={{ fontSize: 9, color: "rgba(250,245,232,0.55)", lineHeight: 1 }}>
+                    <div style={{ fontSize: Math.max(7, Math.min(9, pctSize * 0.4)), color: "rgba(250,245,232,0.55)", lineHeight: 1 }}>
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
+                    </div>
+                  )}
+                  {showUnallocLabel && (
+                    <div style={{ fontSize: Math.max(7, Math.min(9, rect.w * 0.07)), fontWeight: "700", color: "rgba(30,26,14,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1, textAlign: "center", padding: "0 4px" }}>
+                      Unallocated
+                    </div>
+                  )}
+                  {showUnallocLabel && rect.h >= 42 && (
+                    <div style={{ fontSize: Math.max(7, Math.min(11, rect.w * 0.09)), fontWeight: "700", color: "rgba(30,26,14,0.35)", lineHeight: 1 }}>
                       ${Math.round(tile.value).toLocaleString("en-US")}/mo
                     </div>
                   )}

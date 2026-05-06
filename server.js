@@ -11,8 +11,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 Font.register({
   family: "Jost",
   fonts: [
-    { src: join(__dirname, "public/fonts/jost/Jost-Regular.woff2"), fontWeight: 400 },
-    { src: join(__dirname, "public/fonts/jost/Jost-Bold.woff2"), fontWeight: "bold" },
+    { src: join(__dirname, "public/fonts/jost/Jost-Regular.woff"), fontWeight: 400 },
+    { src: join(__dirname, "public/fonts/jost/Jost-Bold.woff"), fontWeight: "bold" },
   ],
 });
 
