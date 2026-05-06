@@ -6,11 +6,13 @@ import { dirname, join } from "path";
 import React from "react";
 import { Document, Page, View, Text, Svg, Rect, StyleSheet, renderToBuffer, Font } from "@react-pdf/renderer";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 Font.register({
   family: "Jost",
   fonts: [
-    { src: "https://cdn.jsdelivr.net/npm/@fontsource/jost/files/jost-latin-400-normal.woff2" },
-    { src: "https://cdn.jsdelivr.net/npm/@fontsource/jost/files/jost-latin-700-normal.woff2", fontWeight: "bold" },
+    { src: join(__dirname, "public/fonts/jost/Jost-Regular.woff2"), fontWeight: 400 },
+    { src: join(__dirname, "public/fonts/jost/Jost-Bold.woff2"), fontWeight: "bold" },
   ],
 });
 
@@ -20,7 +22,7 @@ const PDF_CREAM = "#faf5e8";
 const PDF_MUTED = "#7a6a44";
 
 const pdfS = StyleSheet.create({
-  page:       { padding: 40, backgroundColor: PDF_CREAM, fontFamily: "Helvetica" },
+  page:       { padding: 40, backgroundColor: PDF_CREAM, fontFamily: "Jost" },
   header:     { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.1)" },
   brand:      { fontSize: 22, fontWeight: "bold", color: PDF_INK },
   tagline:    { fontSize: 7, color: PDF_MUTED, marginTop: 3, letterSpacing: 1.5 },
@@ -40,7 +42,6 @@ const pdfS = StyleSheet.create({
   footer:     { position: "absolute", bottom: 24, left: 40, right: 40, textAlign: "center", fontSize: 7, color: "rgba(0,0,0,0.22)", letterSpacing: 1.5 },
 });
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
