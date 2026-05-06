@@ -64,10 +64,10 @@ function darkenHex(hex, amt = 30) {
 
 function catKindSublabel(cat) {
   if (!cat) return "";
-  if (cat.kind === "savings") return `saving $${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+  if (cat.kind === "savings") return `saving $${Math.round(cat.monthly || 0).toLocaleString("en-US")}/mo`;
   if (cat.kind === "one_time") return "one-time cost";
   if (cat.kind === "property") return cat.propertyNeed ? `needs ${cat.propertyNeed}` : "property need";
-  return `$${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+  return `$${Math.round(cat.monthly || 0).toLocaleString("en-US")}/mo`;
 }
 
 // ── Mortgage math ──────────────────────────────────────────────────────────
@@ -83,12 +83,111 @@ function pmiMonthly(price, downPct) {
   return Math.round(price * 0.0085 / 12);
 }
 
-// ── Affordability signal ───────────────────────────────────────────────────
-function getSignal(pct) {
-  if (pct <= 28) return { label: "Fits Your Life",  color: "#4A9B6F" };
-  if (pct <= 35) return { label: "Manageable",       color: "#E8A030" };
-  if (pct <= 45) return { label: "Stretched",        color: "#D97B3A" };
-  return               { label: "Hard to Sustain",  color: "#C8412A" };
+// ── Multi-dimensional verdict ──────────────────────────────────────────────
+const PROPERTY_NEED_KEYWORDS = {
+  yard:     ["yard", "garden", "outdoor", "lawn", "landscap", "grass"],
+  garage:   ["garage", "parking", "car", "vehicles", "workshop"],
+  office:   ["office", "study", "den", "workspace", "work from home", "wfh"],
+  basement: ["basement", "storage", "cellar", "utility"],
+  pool:     ["pool", "swim"],
+  pets:     ["pet", "dog", "cat", "animal", "fence", "fenced"],
+  space:    ["space", "room", "large", "big", "open floor", "entertaining"],
+};
+
+function scoreFinancial(housingPct, tiles, profile) {
+  let base;
+  if      (housingPct <= 20) base = 100;
+  else if (housingPct <= 28) base = Math.round(100 - ((housingPct - 20) / 8)  * 15);
+  else if (housingPct <= 35) base = Math.round(85  - ((housingPct - 28) / 7)  * 20);
+  else if (housingPct <= 45) base = Math.round(65  - ((housingPct - 35) / 10) * 25);
+  else                       base = Math.max(0, Math.round(40 - ((housingPct - 45) / 25) * 40));
+
+  const inc        = profile.income;
+  const totalSpend = tiles.reduce((s, t) => s + t.value, 0);
+  const surplus    = ((inc - totalSpend) / inc) * 100;
+  const sAdj       = surplus > 10 ? 5 : surplus > 0 ? 0 : surplus > -10 ? -8 : -18;
+
+  return Math.max(0, Math.min(100, base + sAdj));
+}
+
+function scoreLifestyle(tiles, profile) {
+  const inc          = profile.income;
+  const lifePct      = (tiles.filter(t => t.id !== "housing" && t.id !== "needs")
+                             .reduce((s, t) => s + t.value, 0) / inc) * 100;
+  let base;
+  if      (lifePct >= 18) base = 90;
+  else if (lifePct >= 12) base = Math.round(90 - ((18 - lifePct) / 6)  * 25);
+  else if (lifePct >= 6)  base = Math.round(65 - ((12 - lifePct) / 6)  * 30);
+  else if (lifePct >= 2)  base = Math.round(35 - ((6  - lifePct) / 4)  * 25);
+  else                    base = 10;
+  return Math.max(0, Math.min(100, base));
+}
+
+function matchPropertyNeed(needText, property) {
+  if (!needText || !property) return 50;
+  const lower = needText.toLowerCase();
+  const lot   = property.lotSize || 0;
+  const type  = (property.propertyType || "").toLowerCase();
+  const beds  = property.beds || 0;
+  const sqft  = property.sqft || 0;
+  let signals = 0, matches = 0;
+  if (PROPERTY_NEED_KEYWORDS.yard.some(k => lower.includes(k)))
+    { signals++; if (lot >= 4000 && !type.includes("condo")) matches++; }
+  if (PROPERTY_NEED_KEYWORDS.garage.some(k => lower.includes(k)))
+    { signals++; if (!type.includes("condo") && !type.includes("apartment")) matches++; }
+  if (PROPERTY_NEED_KEYWORDS.office.some(k => lower.includes(k)))
+    { signals++; if (beds >= 3) matches++; }
+  if (PROPERTY_NEED_KEYWORDS.basement.some(k => lower.includes(k)))
+    { signals++; }
+  if (PROPERTY_NEED_KEYWORDS.pool.some(k => lower.includes(k)))
+    { signals++; }
+  if (PROPERTY_NEED_KEYWORDS.pets.some(k => lower.includes(k)))
+    { signals++; if (lot >= 2000 && !type.includes("condo")) matches++; }
+  if (PROPERTY_NEED_KEYWORDS.space.some(k => lower.includes(k)))
+    { signals++; if (beds >= 3 || sqft >= 1800) matches++; }
+  return signals ? Math.round((matches / signals) * 100) : 50;
+}
+
+function scoreProperty(property, profile) {
+  const needs = (profile?.cats || []).filter(c => c.kind === "property" && c.propertyNeed);
+  if (!needs.length) return 75;
+  return Math.round(needs.reduce((s, c) => s + matchPropertyNeed(c.propertyNeed, property), 0) / needs.length);
+}
+
+function integrateVerdict({ financial, lifestyle, property }) {
+  return Math.round(financial * 0.45 + lifestyle * 0.30 + property * 0.25);
+}
+
+function computeVerdict({ tiles, profile, property, housingPct }) {
+  if (!tiles.length) return { label: "–", color: INK, headline: "–", subline: "–", score: 0, financial: 0, lifestyle: 0, property: 0 };
+  const financial     = scoreFinancial(housingPct, tiles, profile);
+  const lifestyle     = scoreLifestyle(tiles, profile);
+  const propertyScore = scoreProperty(property, profile);
+  const score         = integrateVerdict({ financial, lifestyle, property: propertyScore });
+
+  let label, color, headline, subline;
+  if (score >= 80) {
+    label = "Fits Your Life";   color = "#4A9B6F";
+    headline = "This home works.";
+    subline  = `Housing takes ${housingPct.toFixed(0)}% — your lifestyle budget stays healthy.`;
+  } else if (score >= 65) {
+    label = "Mostly Fits";      color = "#6FA876";
+    headline = "Close, with trade-offs.";
+    subline  = `At ${housingPct.toFixed(0)}%, this mostly works — a few things to watch.`;
+  } else if (score >= 50) {
+    label = "Real Trade-Off";   color = "#E8A030";
+    headline = "Something gives.";
+    subline  = `Housing at ${housingPct.toFixed(0)}% reshapes your lifestyle. Drag to see what.`;
+  } else if (score >= 35) {
+    label = "Stretched";        color = "#D97B3A";
+    headline = "Stretched thin.";
+    subline  = `At ${housingPct.toFixed(0)}%, this works against several of your priorities.`;
+  } else {
+    label = "Works Against You"; color = "#C8412A";
+    headline = "Hard to make work.";
+    subline  = `Housing eats ${housingPct.toFixed(0)}% of income — something major has to give.`;
+  }
+  return { label, color, headline, subline, score, financial, lifestyle, property: propertyScore };
 }
 
 // ── Treemap layout ─────────────────────────────────────────────────────────
@@ -97,6 +196,7 @@ function computeRects(tiles, W, H, gap) {
   const g = gap;
   const total = tiles.reduce((s, t) => s + t.value, 0);
   const housing = tiles.find(t => t.id === "housing");
+  if (!housing) return [];
   const rest = tiles.filter(t => t.id !== "housing");
   const leftW = (housing.value / total) * (W - g);
   const rightW = W - leftW - g;
@@ -760,7 +860,7 @@ function PaywallOverlay({ onClose }) {
 }
 
 // ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, onCatAmountChange }) {
+function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmountChange }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -828,7 +928,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
   const nonTreemapCats = profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings");
   const housingTile = tiles.find(t => t.id === "housing");
   const housingPct  = housingTile ? (housingTile.value / inc) * 100 : 0;
-  const signal      = getSignal(housingPct);
+  const verdict     = computeVerdict({ tiles, profile, property, housingPct });
   const rects       = computeRects(tiles, dims.w, dims.h, GAP);
 
   // Edge defs derived from tiles
@@ -940,15 +1040,6 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
   const housingR = rects.find(r => r.id === "housing");
   const rightX   = housingR ? housingR.w + GAP : 0;
   const rightW   = dims.w - rightX;
-
-  // Dynamic verdict
-  const getVerdict = () => {
-    if (housingPct <= 28) return { text: `This home fits your life. Housing takes ${housingPct.toFixed(0)}% — your lifestyle budget stays healthy.`, color: "#4A9B6F" };
-    if (housingPct <= 35) return { text: `Manageable but tight at ${housingPct.toFixed(0)}%. Adjust the tiles to see what you'd trim.`, color: "#E8A030" };
-    if (housingPct <= 45) return { text: `Reshapes your lifestyle. At ${housingPct.toFixed(0)}%, something has to give — drag tiles to see what.`, color: "#D97B3A" };
-    return { text: `Hard to sustain. Housing eats ${housingPct.toFixed(0)}% — this works against your life.`, color: "#C8412A" };
-  };
-  const verdict = getVerdict();
 
   const streetViewUrl = `/api/streetview?address=${encodeURIComponent(property.address)}`;
 
@@ -1069,10 +1160,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
           </div>
           <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 3, letterSpacing: "0.04em" }}>
             {[
-              property.price ? `$${property.price.toLocaleString()}` : null,
+              property.price ? `$${property.price.toLocaleString("en-US")}` : null,
               property.beds ? `${property.beds}bd` : null,
               property.baths ? `${property.baths}ba` : null,
-              property.sqft ? `${property.sqft.toLocaleString()}sf` : null,
+              property.sqft ? `${property.sqft.toLocaleString("en-US")}sf` : null,
               property.lotSize ? `${(property.lotSize / 1000).toFixed(1)}k lot` : null,
               property.yearBuilt ? `${property.yearBuilt}` : null,
             ].filter(Boolean).join(" · ")}
@@ -1089,7 +1180,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
         <div style={{ fontSize: 9, color: "rgba(250,245,232,0.45)", letterSpacing: "0.14em", textTransform: "uppercase" }}>Est. monthly</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: 16, fontWeight: "800", color: CREAM }}>
-            ${Math.round(housingTile?.value || 0).toLocaleString()}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
+            ${Math.round(housingTile?.value || 0).toLocaleString("en-US")}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
           </div>
           <div
             onClick={() => setShowAssumptions(true)}
@@ -1106,6 +1197,40 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
           </div>
         </div>
       </div>
+
+      {/* Verdict headline — above treemap (suppressed until tiles are ready) */}
+      {housingTile && <div style={{
+        flexShrink: 0,
+        background: `${verdict.color}18`,
+        border: `1.5px solid ${verdict.color}44`,
+        borderRadius: 6,
+        padding: "8px 12px",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "4px 10px" }}>
+          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+            {verdict.label}
+          </div>
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: "700", color: INK, letterSpacing: "-0.01em" }}>{verdict.headline}</div>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{verdict.subline}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+          {[
+            { key: "F", score: verdict.financial },
+            { key: "L", score: verdict.lifestyle },
+            { key: "P", score: verdict.property },
+          ].map(({ key, score }) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ fontSize: 7, color: MUTED, letterSpacing: "0.06em", width: 8, textAlign: "right" }}>{key}</div>
+              <div style={{ width: 32, height: 3, background: "rgba(0,0,0,0.1)", borderRadius: 2 }}>
+                <div style={{ width: `${score}%`, height: "100%", background: verdict.color, borderRadius: 2, opacity: 0.85 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>}
 
       {/* Treemap — capped at 44dvh so tiles stay roughly square on any phone */}
       <div
@@ -1182,7 +1307,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
                       {pct.toFixed(0)}%
                     </div>
                     <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString()}/mo
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
                     </div>
                   </div>
                 </div>
@@ -1196,7 +1321,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
                   </div>
                   {showMo && (
                     <div style={{ fontSize: moSize, opacity: 0.65, marginTop: 3, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString()}/mo
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
                     </div>
                   )}
                 </div>
@@ -1288,34 +1413,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
 
       </div>
 
-      {/* Verdict + actions — sit directly below treemap, no gap in middle */}
+      {/* Actions + nonTreemapCats */}
       <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{
-          padding: "8px 10px", borderRadius: 6,
-          background: `${verdict.color}14`,
-          border: `1.5px solid ${verdict.color}55`,
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
-            <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-              {signal.label}
-            </div>
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 11, color: INK, lineHeight: 1.4 }}>{verdict.text}</div>
-            {(() => {
-              const totalSpend = tiles.reduce((s, t) => s + t.value, 0);
-              const surplus = inc - totalSpend;
-              return (
-                <div style={{ fontSize: 10, color: surplus >= 0 ? "#4A9B6F" : "#C8412A", fontWeight: "600", marginTop: 3 }}>
-                  {surplus >= 0
-                    ? `+$${Math.round(surplus).toLocaleString()}/mo unallocated`
-                    : `-$${Math.round(Math.abs(surplus)).toLocaleString()}/mo over budget`}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
 
         {nonTreemapCats.length > 0 && (
           <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.4)", borderRadius: 6 }}>
@@ -1345,7 +1444,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
           >← New</button>
           <button
             style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
-            onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
+            onClick={() => onShare({ tiles, property, verdict, housingPct, rate, downPct })}
           >
             Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
           </button>
@@ -1545,7 +1644,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
   const [loading, setLoading]   = useState(!cachedSummary);
   const [done, setDone]         = useState(false);
   const [revealed, setRevealed] = useState(!!cachedSummary);
-  const { tiles, property, signal, housingPct, rate, downPct } = data;
+  const { tiles, property, verdict, housingPct, rate, downPct } = data;
   const inc = profile.income;
 
   useEffect(() => {
@@ -1569,7 +1668,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
       income: inc,
       essentialsTotal: profile.essentialsTotal,
       housingPct,
-      signal,
+      verdict,
       cats: profile.cats.map(c => ({ label: c.label, kind: c.kind, monthly: c.monthly || null, propertyNeed: c.propertyNeed || null })),
       downPct,
       rate,
@@ -1599,16 +1698,18 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
         boxShadow: "0 8px 40px rgba(0,0,0,0.15)",
         overflow: "hidden",
       }}>
-        <div style={{ background: INK, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: "800", color: CREAM, letterSpacing: "-0.02em" }}>LIVABLE</div>
-            <div style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(250,245,232,0.5)", textTransform: "uppercase" }}>Home · Budget · Life</div>
-          </div>
-          <div style={{ background: signal.color, borderRadius: 4, padding: "6px 12px", textAlign: "center" }}>
-            <div style={{ fontSize: 10, fontWeight: "700", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              {signal.label}
+        <div style={{ background: verdict.color, padding: "14px 20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 7, letterSpacing: "0.24em", color: "rgba(250,245,232,0.55)", textTransform: "uppercase", marginBottom: 4 }}>LIVABLE</div>
+              <div style={{ fontSize: 18, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", lineHeight: 1.1 }}>{verdict.label}</div>
+              <div style={{ fontSize: 9, color: "rgba(250,245,232,0.75)", marginTop: 4, maxWidth: 220 }}>{verdict.headline} {verdict.subline}</div>
             </div>
-            <div style={{ fontSize: 8, color: "rgba(252,246,224,0.7)", marginTop: 1 }}>{housingPct.toFixed(0)}% of income</div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 9, color: "rgba(250,245,232,0.55)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Housing</div>
+              <div style={{ fontSize: 22, fontWeight: "800", color: CREAM, lineHeight: 1 }}>{housingPct.toFixed(0)}%</div>
+              <div style={{ fontSize: 8, color: "rgba(250,245,232,0.55)" }}>of income</div>
+            </div>
           </div>
         </div>
 
@@ -1617,23 +1718,38 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
           <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid rgba(0,0,0,0.08)` }}>
             <div style={{ fontSize: 13, fontWeight: "700", color: INK }}>{property.address}</div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-              ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds}bd {property.baths}ba &nbsp;·&nbsp; ${Math.round(tiles.find(t=>t.id==="housing")?.value||0).toLocaleString()}/mo &nbsp;·&nbsp; {rate}% &nbsp;·&nbsp; {downPct}% down
+              {[
+                property.price ? `$${property.price.toLocaleString("en-US")}` : null,
+                (property.beds || property.baths) ? `${property.beds || 0}bd ${property.baths || 0}ba` : null,
+                `$${Math.round(tiles.find(t=>t.id==="housing")?.value||0).toLocaleString("en-US")}/mo`,
+                `${rate}%`,
+                `${downPct}% down`,
+              ].filter(Boolean).join(" · ")}
             </div>
           </div>
 
           <div style={{ marginBottom: 14, borderRadius: 4, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.1)" }}>
             <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+              <defs>
+                {tiles.filter(t => t.kind === "savings").map(t => (
+                  <pattern key={`sp-${t.id}`} id={`sp-${t.id}`} patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">
+                    <rect width="6" height="12" fill={t.color} />
+                    <rect x="6" width="6" height="12" fill={darkenHex(t.color, 25)} />
+                  </pattern>
+                ))}
+              </defs>
               {shareRects.map(rect => {
                 const tile = tiles.find(t => t.id === rect.id);
                 if (!tile) return null;
                 const pct = (tile.value / inc) * 100;
                 const pad = 5;
                 const avail = rect.w - pad * 2;
+                const tileFill = tile.kind === "savings" ? `url(#sp-${tile.id})` : tile.color;
 
                 const labelSize = Math.max(5, Math.min(8, avail / (tile.label.length * 0.65)));
                 const pctSize   = Math.max(7, Math.min(18, avail / 3.2));
                 const moSize    = Math.max(5, Math.min(7, avail / 7));
-                const moText    = `$${Math.round(tile.value).toLocaleString()}/mo`;
+                const moText    = `$${Math.round(tile.value).toLocaleString("en-US")}/mo`;
 
                 const useVert = avail < 38 && rect.h > 50;
                 const stackH  = labelSize + 3 + pctSize + 3 + moSize;
@@ -1642,7 +1758,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (!fitsH && !useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h/2 + pctSize*0.35}
                         fontSize={Math.min(pctSize, rect.h * 0.4)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1656,7 +1772,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h - pad - moSize - 2}
                         fontSize={Math.min(pctSize, rect.w * 0.6)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1683,7 +1799,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
                 return (
                   <g key={rect.id}>
-                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                     <text x={rect.x + pad} y={rect.y + pad + labelSize}
                       fontSize={labelSize} fill="rgba(252,246,224,0.82)"
                       fontFamily="Futura, Century Gothic, sans-serif" fontWeight="600">
@@ -1732,7 +1848,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
           {/* Budget breakdown table */}
           <div style={{ paddingTop: 12, borderTop: `1px solid rgba(0,0,0,0.08)` }}>
             <div style={{ fontSize: 8, letterSpacing: "0.2em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
-              Monthly Breakdown · ${inc.toLocaleString()} take-home
+              Monthly Breakdown · ${inc.toLocaleString("en-US")} take-home
             </div>
             {tiles.map(t => {
               const pct = (t.value / inc) * 100;
@@ -1741,7 +1857,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                   <div style={{ width: 8, height: 8, background: t.color, borderRadius: 2, flexShrink: 0 }} />
                   <div style={{ fontSize: 10, color: INK, flex: 1 }}>{t.label}{t.locked ? " — Fixed" : ""}</div>
                   <div style={{ fontSize: 10, color: MUTED, fontFamily: "monospace" }}>{pct.toFixed(1)}%</div>
-                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, fontFamily: "monospace" }}>${Math.round(t.value).toLocaleString()}/mo</div>
+                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, fontFamily: "monospace" }}>${Math.round(t.value).toLocaleString("en-US")}/mo</div>
                   <div style={{ width: 50, height: 3, background: "rgba(0,0,0,0.07)", borderRadius: 2 }}>
                     <div style={{ width: `${Math.min(100, pct * 2.5)}%`, height: "100%", background: t.color, borderRadius: 2 }} />
                   </div>
@@ -1769,7 +1885,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
               const res = await fetch("/api/pdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ property, tiles, signal, housingPct, rate, downPct, summary, income: inc }),
+                body: JSON.stringify({ property, tiles, verdict, housingPct, rate, downPct, summary, income: inc }),
               });
               const blob = await res.blob();
               const file = new File([blob], "livable-summary.pdf", { type: "application/pdf" });

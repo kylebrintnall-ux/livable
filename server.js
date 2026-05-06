@@ -101,7 +101,7 @@ function buildPropertyContext(property) {
 }
 
 // ── Build summary prompt — three-dimensional cross-examination ─────────────
-function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
+function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, verdict, signal, cats, downPct, rate }) {
   const recurring     = (cats || []).filter(c => c.kind === "recurring");
   const savings       = (cats || []).filter(c => c.kind === "savings");
   const propertyNeeds = (cats || []).filter(c => c.kind === "property");
@@ -134,7 +134,7 @@ USER'S FINANCIAL REALITY:
 Monthly take-home: $${Number(income).toLocaleString("en-US")}
 Monthly essentials (savings, healthcare, education, groceries, utilities, transport): $${Math.round(essentialsTotal || 0).toLocaleString("en-US")}
 This house takes ${Number(housingPct).toFixed(0)}% of their take-home pay.
-Financial signal: ${signal?.label || "Unknown"}.
+Verdict: ${verdict?.label || signal?.label || "Unknown"} (financial fit ${verdict?.financial ?? "??"}/100, lifestyle fit ${verdict?.lifestyle ?? "??"}/100, property fit ${verdict?.property ?? "??"}/100).
 
 USER'S LIFESTYLE COMMITMENTS, BY KIND:
 Monthly recurring spending: ${recurringStr}
@@ -162,6 +162,7 @@ function computeRects(tiles, W, H, gap) {
   if (!tiles.length) return [];
   const total = tiles.reduce((s, t) => s + t.value, 0);
   const housing = tiles.find(t => t.id === "housing");
+  if (!housing) return [];
   const rest = tiles.filter(t => t.id !== "housing");
   const leftW = (housing.value / total) * (W - gap);
   const rightW = W - leftW - gap;
@@ -226,7 +227,7 @@ app.post("/api/summary", async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
@@ -242,8 +243,9 @@ app.post("/api/summary", async (req, res) => {
 
 // ── POST /api/pdf — generate PDF report ───────────────────────────────────
 app.post("/api/pdf", async (req, res) => {
-  const { property, tiles, signal, housingPct, rate, downPct, summary, income } = req.body;
-  if (!property || !tiles || !signal) return res.status(400).json({ error: "Missing required fields" });
+  const { property, tiles, verdict, signal, housingPct, rate, downPct, summary, income } = req.body;
+  if (!property || !tiles || !(verdict || signal)) return res.status(400).json({ error: "Missing required fields" });
+  const displayVerdict = verdict || { label: signal?.label || "Unknown", color: signal?.color || "#4A9B6F" };
 
   const h = React.createElement;
   const paragraphs = summary ? summary.split("\n\n").filter(Boolean) : [];
@@ -296,14 +298,20 @@ app.post("/api/pdf", async (req, res) => {
         h(Text, { style: pdfS.brand }, "LIVABLE"),
         h(Text, { style: pdfS.tagline }, "HOME · BUDGET · LIFE")
       ),
-      h(View, { style: [pdfS.badge, { backgroundColor: signal.color }] },
-        h(Text, { style: pdfS.badgeLabel }, signal.label.toUpperCase()),
+      h(View, { style: [pdfS.badge, { backgroundColor: displayVerdict.color }] },
+        h(Text, { style: pdfS.badgeLabel }, displayVerdict.label.toUpperCase()),
         h(Text, { style: pdfS.badgePct }, `${Number(housingPct).toFixed(0)}% of income`)
       )
     ),
     h(Text, { style: pdfS.address }, property.address),
     h(Text, { style: pdfS.meta },
-      `$${property.price.toLocaleString("en-US")} list price · ${property.beds}bd ${property.baths}ba · $${housingMonthly.toLocaleString("en-US")}/mo est. · ${rate}% · ${downPct}% down`
+      [
+        `$${property.price.toLocaleString("en-US")} list price`,
+        (property.beds || property.baths) ? `${property.beds || 0}bd ${property.baths || 0}ba` : null,
+        `$${housingMonthly.toLocaleString("en-US")}/mo est.`,
+        `${rate}%`,
+        `${downPct}% down`,
+      ].filter(Boolean).join(" · ")
     ),
     treemapSvg,
     ...summaryChildren,
