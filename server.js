@@ -305,7 +305,13 @@ app.post("/api/pdf", async (req, res) => {
     ),
     h(Text, { style: pdfS.address }, property.address),
     h(Text, { style: pdfS.meta },
-      `$${property.price.toLocaleString("en-US")} list price · ${property.beds}bd ${property.baths}ba · $${housingMonthly.toLocaleString("en-US")}/mo est. · ${rate}% · ${downPct}% down`
+      [
+        `$${property.price.toLocaleString("en-US")} list price`,
+        (property.beds || property.baths) ? `${property.beds || 0}bd ${property.baths || 0}ba` : null,
+        `$${housingMonthly.toLocaleString("en-US")}/mo est.`,
+        `${rate}%`,
+        `${downPct}% down`,
+      ].filter(Boolean).join(" · ")
     ),
     treemapSvg,
     ...summaryChildren,

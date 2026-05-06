@@ -64,10 +64,10 @@ function darkenHex(hex, amt = 30) {
 
 function catKindSublabel(cat) {
   if (!cat) return "";
-  if (cat.kind === "savings") return `saving $${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+  if (cat.kind === "savings") return `saving $${Math.round(cat.monthly || 0).toLocaleString("en-US")}/mo`;
   if (cat.kind === "one_time") return "one-time cost";
   if (cat.kind === "property") return cat.propertyNeed ? `needs ${cat.propertyNeed}` : "property need";
-  return `$${Math.round(cat.monthly || 0).toLocaleString()}/mo`;
+  return `$${Math.round(cat.monthly || 0).toLocaleString("en-US")}/mo`;
 }
 
 // ── Mortgage math ──────────────────────────────────────────────────────────
@@ -159,6 +159,7 @@ function integrateVerdict({ financial, lifestyle, property }) {
 }
 
 function computeVerdict({ tiles, profile, property, housingPct }) {
+  if (!tiles.length) return { label: "–", color: INK, headline: "–", subline: "–", score: 0, financial: 0, lifestyle: 0, property: 0 };
   const financial     = scoreFinancial(housingPct, tiles, profile);
   const lifestyle     = scoreLifestyle(tiles, profile);
   const propertyScore = scoreProperty(property, profile);
@@ -859,7 +860,7 @@ function PaywallOverlay({ onClose }) {
 }
 
 // ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, onCatAmountChange }) {
+function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmountChange }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -1159,10 +1160,10 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
           </div>
           <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 3, letterSpacing: "0.04em" }}>
             {[
-              property.price ? `$${property.price.toLocaleString()}` : null,
+              property.price ? `$${property.price.toLocaleString("en-US")}` : null,
               property.beds ? `${property.beds}bd` : null,
               property.baths ? `${property.baths}ba` : null,
-              property.sqft ? `${property.sqft.toLocaleString()}sf` : null,
+              property.sqft ? `${property.sqft.toLocaleString("en-US")}sf` : null,
               property.lotSize ? `${(property.lotSize / 1000).toFixed(1)}k lot` : null,
               property.yearBuilt ? `${property.yearBuilt}` : null,
             ].filter(Boolean).join(" · ")}
@@ -1179,7 +1180,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
         <div style={{ fontSize: 9, color: "rgba(250,245,232,0.45)", letterSpacing: "0.14em", textTransform: "uppercase" }}>Est. monthly</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: 16, fontWeight: "800", color: CREAM }}>
-            ${Math.round(housingTile?.value || 0).toLocaleString()}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
+            ${Math.round(housingTile?.value || 0).toLocaleString("en-US")}<span style={{ fontSize: 9, fontWeight: "400", opacity: 0.5 }}>/mo</span>
           </div>
           <div
             onClick={() => setShowAssumptions(true)}
@@ -1306,7 +1307,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
                       {pct.toFixed(0)}%
                     </div>
                     <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString()}/mo
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
                     </div>
                   </div>
                 </div>
@@ -1320,7 +1321,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
                   </div>
                   {showMo && (
                     <div style={{ fontSize: moSize, opacity: 0.65, marginTop: 3, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString()}/mo
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
                     </div>
                   )}
                 </div>
@@ -1717,7 +1718,13 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
           <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid rgba(0,0,0,0.08)` }}>
             <div style={{ fontSize: 13, fontWeight: "700", color: INK }}>{property.address}</div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-              ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds}bd {property.baths}ba &nbsp;·&nbsp; ${Math.round(tiles.find(t=>t.id==="housing")?.value||0).toLocaleString()}/mo &nbsp;·&nbsp; {rate}% &nbsp;·&nbsp; {downPct}% down
+              {[
+                property.price ? `$${property.price.toLocaleString("en-US")}` : null,
+                (property.beds || property.baths) ? `${property.beds || 0}bd ${property.baths || 0}ba` : null,
+                `$${Math.round(tiles.find(t=>t.id==="housing")?.value||0).toLocaleString("en-US")}/mo`,
+                `${rate}%`,
+                `${downPct}% down`,
+              ].filter(Boolean).join(" · ")}
             </div>
           </div>
 
@@ -1742,7 +1749,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 const labelSize = Math.max(5, Math.min(8, avail / (tile.label.length * 0.65)));
                 const pctSize   = Math.max(7, Math.min(18, avail / 3.2));
                 const moSize    = Math.max(5, Math.min(7, avail / 7));
-                const moText    = `$${Math.round(tile.value).toLocaleString()}/mo`;
+                const moText    = `$${Math.round(tile.value).toLocaleString("en-US")}/mo`;
 
                 const useVert = avail < 38 && rect.h > 50;
                 const stackH  = labelSize + 3 + pctSize + 3 + moSize;
@@ -1841,7 +1848,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
           {/* Budget breakdown table */}
           <div style={{ paddingTop: 12, borderTop: `1px solid rgba(0,0,0,0.08)` }}>
             <div style={{ fontSize: 8, letterSpacing: "0.2em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
-              Monthly Breakdown · ${inc.toLocaleString()} take-home
+              Monthly Breakdown · ${inc.toLocaleString("en-US")} take-home
             </div>
             {tiles.map(t => {
               const pct = (t.value / inc) * 100;
@@ -1850,7 +1857,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                   <div style={{ width: 8, height: 8, background: t.color, borderRadius: 2, flexShrink: 0 }} />
                   <div style={{ fontSize: 10, color: INK, flex: 1 }}>{t.label}{t.locked ? " — Fixed" : ""}</div>
                   <div style={{ fontSize: 10, color: MUTED, fontFamily: "monospace" }}>{pct.toFixed(1)}%</div>
-                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, fontFamily: "monospace" }}>${Math.round(t.value).toLocaleString()}/mo</div>
+                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, fontFamily: "monospace" }}>${Math.round(t.value).toLocaleString("en-US")}/mo</div>
                   <div style={{ width: 50, height: 3, background: "rgba(0,0,0,0.07)", borderRadius: 2 }}>
                     <div style={{ width: `${Math.min(100, pct * 2.5)}%`, height: "100%", background: t.color, borderRadius: 2 }} />
                   </div>
