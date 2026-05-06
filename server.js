@@ -227,7 +227,7 @@ app.post("/api/summary", async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
@@ -280,10 +280,10 @@ app.post("/api/pdf", async (req, res) => {
         const children = [h(Rect, { key: `r_${rect.id}`, x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: tile.color, rx: 4 })];
         if (rect.w > 30) {
           children.push(
-            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: PDF_CREAM, fontFamily: "Helvetica" },
+            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: PDF_CREAM },
               tile.label.toUpperCase()
             ),
-            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize, fontSize: pctSize, fill: PDF_CREAM, fontFamily: "Helvetica-Bold" },
+            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize, fontSize: pctSize, fill: PDF_CREAM, fontWeight: "bold" },
               `${pct.toFixed(0)}%`
             )
           );

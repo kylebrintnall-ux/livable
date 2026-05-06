@@ -920,7 +920,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
     const housingMonthly = payment + pmi + taxes + insurance;
 
     const treemapCats = profile.cats.filter(c =>
-      (c.kind === "recurring" || c.kind === "savings") && (c.monthly || 0) > 0
+      c.kind === "recurring" || c.kind === "savings"
     );
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
@@ -928,7 +928,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
       ...treemapCats.map((cat, i) => ({
         id: cat.id,
         label: cat.label,
-        value: cat.monthly,
+        value: Math.max(cat.monthly || 0, 1),
         color: CAT_COLORS[i % CAT_COLORS.length],
         locked: false,
         custom: cat.custom,
@@ -982,7 +982,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
     <div style={{
       width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
       display: "flex", flexDirection: "column",
-      height: "100%",
+      flex: 1, minHeight: 0,
       padding: "calc(env(safe-area-inset-top, 0px) + 8px) 14px calc(env(safe-area-inset-bottom, 0px) + 8px)",
       boxSizing: "border-box",
       gap: 6,

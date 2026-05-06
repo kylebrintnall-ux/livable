@@ -41,7 +41,7 @@ Deployed on Railway. Live at livable.app.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
-`claude-sonnet-4-6-20250514` (full model ID — the short form `claude-sonnet-4-6` is NOT valid)
+`claude-sonnet-4-6` — the dated snapshot `claude-sonnet-4-6-20250514` was deprecated (retired circa 2026).
 
 ## Environment variables
 | Key | Used by |
