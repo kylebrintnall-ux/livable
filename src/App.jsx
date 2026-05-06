@@ -1034,7 +1034,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
         </div>
       )}
 
-      {/* Property photo card — 110px, no FOR SALE label */}
+      {/* Property photo card — 80px */}
       <div
         onClick={() => setPhotoExpanded(true)}
         style={{
@@ -1045,6 +1045,19 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
         }}
       >
         <img src={streetViewUrl} alt={property.address} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+
+        {/* Days-on-market badge */}
+        {property.daysOnMarket != null && property.daysOnMarket < 7 && (
+          <div style={{ position: "absolute", top: 6, right: 6, background: "#4A9B6F", borderRadius: 3, padding: "2px 6px", fontSize: 7, fontWeight: "800", color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase", zIndex: 1 }}>
+            Just listed
+          </div>
+        )}
+        {property.daysOnMarket != null && property.daysOnMarket >= 90 && (
+          <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(30,26,14,0.78)", borderRadius: 3, padding: "2px 6px", fontSize: 7, fontWeight: "700", color: "rgba(250,245,232,0.7)", letterSpacing: "0.06em", zIndex: 1 }}>
+            {property.daysOnMarket}d on market
+          </div>
+        )}
+
         <div style={{
           position: "absolute", inset: 0,
           background: "linear-gradient(to top, rgba(18,16,8,0.97) 0%, rgba(18,16,8,0.15) 60%, transparent 100%)",
@@ -1055,7 +1068,14 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
             {property.address}
           </div>
           <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 3, letterSpacing: "0.04em" }}>
-            ${property.price.toLocaleString()} &nbsp;·&nbsp; {property.beds}bd &nbsp;·&nbsp; {property.baths}ba &nbsp;·&nbsp; {property.sqft.toLocaleString()}sf &nbsp;·&nbsp; {property.yearBuilt}
+            {[
+              property.price ? `$${property.price.toLocaleString()}` : null,
+              property.beds ? `${property.beds}bd` : null,
+              property.baths ? `${property.baths}ba` : null,
+              property.sqft ? `${property.sqft.toLocaleString()}sf` : null,
+              property.lotSize ? `${(property.lotSize / 1000).toFixed(1)}k lot` : null,
+              property.yearBuilt ? `${property.yearBuilt}` : null,
+            ].filter(Boolean).join(" · ")}
           </div>
         </div>
       </div>
@@ -1531,8 +1551,20 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
   useEffect(() => {
     if (cachedSummary) { setSummary(cachedSummary); setLoading(false); setRevealed(true); return; }
     generateSummary({
-      address: property.address,
-      price: property.price,
+      property: {
+        address: property.address,
+        price: property.price,
+        beds: property.beds,
+        baths: property.baths,
+        sqft: property.sqft,
+        yearBuilt: property.yearBuilt,
+        lotSize: property.lotSize,
+        propertyType: property.propertyType,
+        daysOnMarket: property.daysOnMarket,
+        city: property.city,
+        state: property.state,
+        zipCode: property.zipCode,
+      },
       monthlyHousing: tiles.find(t => t.id === "housing")?.value || 0,
       income: inc,
       essentialsTotal: profile.essentialsTotal,

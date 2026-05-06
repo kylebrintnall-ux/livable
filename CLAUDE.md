@@ -36,8 +36,8 @@ Deployed on Railway. Live at livable.app.
 3 free "looks" (property lookups + AI summaries), then `PaywallOverlay` at $4.99/mo.
 
 ## Backend routes (`server.js`)
-- `GET /api/property?address=...` → Rentcast lookup → `{ address, price, beds, baths, sqft, yearBuilt }`
-- `POST /api/summary` → body `{ address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate }` → `cats` is array of `{ label, kind, monthly, propertyNeed }` — Claude generates ONE paragraph (50-70 words) → `{ text }`. Four kind strings split into separate prompt blocks.
+- `GET /api/property?address=...` → Rentcast lookup → `{ address, price, beds, baths, sqft, yearBuilt, lotSize?, propertyType?, daysOnMarket?, listedDate?, county?, city?, state?, zipCode?, latitude?, longitude? }` — optional fields omitted if Rentcast doesn't return them.
+- `POST /api/summary` → body `{ property: { address, price, beds, baths, sqft, yearBuilt, lotSize?, propertyType?, daysOnMarket?, city?, state?, zipCode? }, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }` — Claude generates ONE paragraph (60-90 words) → `{ text, summary }`. Backwards-compatible: old flat-field requests still work. `cats` is array of `{ label, kind, monthly, propertyNeed }`.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
@@ -123,3 +123,4 @@ Helper functions:
 - [x] iOS input zoom: all inputs use fontSize 16 (iOS zooms inputs below 16px)
 - [x] Onboarding model: CATS replaced with 9 discretionary-only lifestyle categories; "Needs" renamed "Essentials" throughout; onboarding label updated to clarify essentials includes savings/healthcare/education
 - [x] Round 6: cat kind field (recurring/savings/one_time/property); 3-stage pick flow; treemap filtered to recurring+savings; savings stripe; nonTreemapCats section; four-kind AI prompt
+- [x] Round 7: richer property data (lotSize, propertyType, daysOnMarket, city/state/zip, lat/lng); property context helpers (describePropertyType, describeLot, describeAge, describeMarketTime, buildPropertyContext); three-dimensional AI cross-examination (financial + lifestyle + property fit); word count 60-90; photo card meta includes lot size; Just listed / 90+ days badges; /api/summary accepts nested property object with flat-field backwards compat. Lat/lng and MLS info passed to AI but never surfaced in UI.
