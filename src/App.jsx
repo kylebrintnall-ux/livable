@@ -1,5 +1,46 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
+// ── localStorage helpers ───────────────────────────────────────────────────
+const STORAGE_KEY = "livable:profile:v1";
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.income || !parsed?.essentials) return null;
+    delete parsed.homeIntent;
+    if (Array.isArray(parsed.cats)) {
+      parsed.cats = parsed.cats.map(c => {
+        if (typeof c === "string") {
+          const def = CATS.find(d => d.id === c);
+          return { id: c, label: def?.label || c, monthly: 0, custom: false };
+        }
+        const def = CATS.find(d => d.id === c.id);
+        return {
+          ...c,
+          label: c.label || def?.label || c.id,
+          monthly: typeof c.monthly === "number" ? c.monthly : 0,
+          custom: c.custom ?? false,
+        };
+      });
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveProfile(profile) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  } catch {}
+}
+
+function clearProfile() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
 // ── Brand ──────────────────────────────────────────────────────────────────
 const BG       = "#cdd4b0";
 const CREAM    = "#faf5e8";
@@ -10,14 +51,6 @@ const NEEDS_COLOR   = "#5a4e8a";
 const CAT_COLORS    = ["#3B7FC4","#4A9B6F","#E8A030","#D4505A","#3A9EA5","#C4963B","#7B5EA7","#D97B3A"];
 
 const MOBILE_MAX = 430;
-
-// ── Taper curve for stack-ranked tiles ────────────────────────────────────
-const TAPER = [0.30, 0.22, 0.17, 0.13, 0.10, 0.08];
-function taperWeights(n) {
-  const w = TAPER.slice(0, n);
-  const sum = w.reduce((s, v) => s + v, 0);
-  return w.map(v => v / sum);
-}
 
 // ── Mortgage math ──────────────────────────────────────────────────────────
 function monthlyPayment(price, downPct, annualRate) {
@@ -61,8 +94,10 @@ function computeRects(tiles, W, H, gap) {
   rows.forEach((row, ri) => {
     const rowH = (rowTotals[ri] / grandTotal) * (H - (rows.length - 1) * g);
     let rx = rightX;
-    row.forEach(tile => {
-      const w = (tile.value / rowTotals[ri]) * (rightW - (row.length - 1) * g);
+    row.forEach((tile, ti) => {
+      const w = ti === row.length - 1
+        ? (rightX + rightW) - rx
+        : (tile.value / rowTotals[ri]) * (rightW - (row.length - 1) * g);
       rects.push({ id: tile.id, x: rx, y: ry, w, h: rowH });
       rx += w + g;
     });
@@ -73,15 +108,25 @@ function computeRects(tiles, W, H, gap) {
 
 // ── Category options ───────────────────────────────────────────────────────
 const CATS = [
-  { id: "travel",        label: "Travel"        },
-  { id: "dining",        label: "Dining"        },
-  { id: "hobbies",       label: "Hobbies"       },
-  { id: "social",        label: "Social"        },
-  { id: "subscriptions", label: "Subscriptions" },
-  { id: "pets",          label: "Pets"          },
-  { id: "fitness",       label: "Fitness"       },
-  { id: "style",         label: "Style"         },
-  { id: "giving",        label: "Giving"        },
+  { id: "travel",        label: "Travel",        shortLabel: "Trvl" },
+  { id: "dining",        label: "Dining",        shortLabel: "Din"  },
+  { id: "hobbies",       label: "Hobbies",       shortLabel: "Hob"  },
+  { id: "social",        label: "Social",        shortLabel: "Soc"  },
+  { id: "subscriptions", label: "Subscriptions", shortLabel: "Subs" },
+  { id: "pets",          label: "Pets",          shortLabel: "Pets" },
+  { id: "fitness",       label: "Fitness",       shortLabel: "Fit"  },
+  { id: "style",         label: "Style",         shortLabel: "Style"},
+  { id: "giving",        label: "Giving",        shortLabel: "Give" },
+];
+
+// ── Essentials line-item fields ────────────────────────────────────────────
+const ESSENTIAL_FIELDS = [
+  { id: "savings",    label: "Savings",         placeholder: "500" },
+  { id: "healthcare", label: "Healthcare",      placeholder: "300" },
+  { id: "education",  label: "Education",       placeholder: "0"   },
+  { id: "groceries",  label: "Groceries",       placeholder: "600" },
+  { id: "transport",  label: "Gas / Transport", placeholder: "200" },
+  { id: "utilities",  label: "Utilities",       placeholder: "180" },
 ];
 
 // ── Property fetch via backend (Rentcast API) ──────────────────────────────
@@ -99,37 +144,21 @@ const CURRENT_RATE = 6.82;
 
 // ── AI Summary via backend (Claude API) ────────────────────────────────────
 async function generateSummary(data) {
-  const { address, price, monthlyHousing, income, housingPct, signal, cats, downPct, rate } = data;
-  const catList = cats.map((c, i) => `${i+1}. ${c.label} (${c.pct.toFixed(0)}% of budget, $${Math.round(c.monthly)}/mo)`).join(", ");
-
-  const prompt = `You are writing a concise financial lifestyle summary for a home affordability app called LIVABLE.
-
-Property: ${address} — $${price.toLocaleString()} list price
-Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString()} (${housingPct.toFixed(0)}% of take-home)
-Down payment: ${downPct}% | Rate: ${rate}%
-Monthly take-home: $${income.toLocaleString()}
-Affordability signal: ${signal.label}
-Lifestyle priorities in order: ${catList}
-
-Write exactly THREE short paragraphs with these headers:
-**The Numbers** — pure math: what the house costs monthly, what's left, whether PMI applies.
-**Your Life** — what this house means for their specific top 2-3 values. Be direct and personal.
-**The Verdict** — one plain-English recommendation. Don't hedge. Tell them clearly if this fits or doesn't.
-
-Tone: warm, honest, direct. Like a smart friend who knows finance. Max 60 words per paragraph. No bullet points.`;
-
   try {
     const res = await fetch("/api/summary", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(data),
     });
+    console.log("[summary] HTTP status:", res.status);
     const json = await res.json();
-    const text = json.text || "";
-    console.log("Summary response:", text);
+    console.log("[summary] response body:", json);
+    const text = json.summary || json.text || "";
+    if (!text && json.error) console.error("[summary] server error:", json.error);
     return text;
-  } catch {
-    return "Unable to generate summary. Please try again.";
+  } catch (e) {
+    console.error("[summary] fetch failed:", e);
+    return "";
   }
 }
 
@@ -155,32 +184,52 @@ const btnPrimary = (disabled) => ({
 });
 
 // ── Screen: Onboarding ────────────────────────────────────────────────────
-function OnboardingScreen({ onDone, shareCount, useCount }) {
-  const [income, setIncome]       = useState("");
-  const [needs, setNeeds]         = useState("");
-  const [downPct, setDownPct]     = useState("10");
-  const [selectedCats, setSelected] = useState([]);
+function OnboardingScreen({ onDone }) {
+  const [income, setIncome]         = useState("");
+  const [essentials, setEssentials] = useState({});
+  const [downPct, setDownPct]       = useState("10");
+  const [selectedCats, setSelected]       = useState([]);
+  const [pendingCategory, setPendingCat]  = useState(null);
+  const [pendingAmount, setPendingAmt]    = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customLabel, setCustomLabel]         = useState("");
+  const [customAmount, setCustomAmount]       = useState("");
   const MAX_CATS = 5;
 
   const toggleCat = (id) => {
-    setSelected(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : prev.length < MAX_CATS ? [...prev, id] : prev
-    );
+    const existingIdx = selectedCats.findIndex(c => c.id === id);
+    if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
+    if (selectedCats.length >= MAX_CATS) return;
+    setPendingCat(id);
+    setPendingAmt("");
   };
 
-  const canProceed = income && needs && selectedCats.length >= 1;
+  const confirmPending = () => {
+    if (!pendingCategory || !pendingAmount) return;
+    const def = CATS.find(c => c.id === pendingCategory);
+    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
+    setPendingCat(null);
+    setPendingAmt("");
+  };
+
+  const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const canProceed = income && essentialsTotal > 0 && selectedCats.length >= 1;
 
   return (
+    <div style={{
+      height: "100%", overflowY: "auto", overscrollBehavior: "contain",
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)",
+      paddingLeft: 14, paddingRight: 14,
+      boxSizing: "border-box",
+    }}>
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       {/* Wordmark */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 26, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 9, letterSpacing: "0.26em", color: MUTED, textTransform: "uppercase", marginTop: 2 }}>
-          Does this home fit your life?
-        </div>
       </div>
 
-      {/* Free tier notice — compact single line */}
+      {/* Free tier notice */}
       <div style={{
         background: "rgba(255,255,255,0.4)", border: `1px solid rgba(100,90,60,0.16)`,
         borderRadius: 5, padding: "7px 10px", marginBottom: 14,
@@ -199,18 +248,34 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
         <div style={{ position: "relative" }}>
           <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" />
+          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" inputMode="numeric" />
         </div>
       </div>
 
-      {/* Basic needs */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
-          Monthly essentials — savings, healthcare, education, groceries, utilities, transport
+      {/* Essentials breakdown — 2-col grid */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+          Monthly essentials
         </div>
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
-          <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 2400" value={needs} onChange={e => setNeeds(e.target.value)} type="number" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {ESSENTIAL_FIELDS.map(f => (
+            <div key={f.id}>
+              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+                {f.label}
+              </div>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 14 }}>$</span>
+                <input
+                  style={{ ...inputStyle, padding: "9px 11px 9px 22px" }}
+                  placeholder={f.placeholder}
+                  value={essentials[f.id] || ""}
+                  onChange={e => setEssentials(prev => ({ ...prev, [f.id]: e.target.value }))}
+                  type="number"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -251,45 +316,166 @@ function OnboardingScreen({ onDone, shareCount, useCount }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {CATS.map((cat) => {
-            const rank = selectedCats.indexOf(cat.id);
+            const rank = selectedCats.findIndex(c => c.id === cat.id);
             const selected = rank !== -1;
+            const isPending = pendingCategory === cat.id;
             const atLimit = selectedCats.length >= MAX_CATS && !selected;
             return (
               <div
                 key={cat.id}
-                onClick={() => toggleCat(cat.id)}
+                onClick={() => !isPending && toggleCat(cat.id)}
                 style={{
-                  background: selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
-                  border: `1.5px solid ${selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
-                  borderRadius: 5, padding: "8px 6px",
+                  background: isPending ? `${CAT_COLORS[0]}18` : selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
+                  border: `1.5px solid ${isPending ? CAT_COLORS[0] : selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
+                  borderRadius: 6, padding: "10px 6px",
                   cursor: atLimit ? "default" : "pointer",
                   opacity: atLimit ? 0.38 : 1,
                   textAlign: "center", position: "relative",
                   transition: "all 0.12s",
                 }}
               >
-                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1.2 }}>{cat.label}</div>
+                <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
                 {selected && (
-                  <div style={{ fontSize: 8, fontWeight: "800", color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 1 }}>{rank + 1}</div>
+                  <>
+                    <div style={{
+                      position: "absolute", top: -6, right: -6,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: CAT_COLORS[rank % CAT_COLORS.length],
+                      color: CREAM, fontSize: 9, fontWeight: "800",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                    }}>
+                      {rank + 1}
+                    </div>
+                    <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
+                      ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                    </div>
+                  </>
                 )}
               </div>
             );
           })}
         </div>
+
+        {/* Pending category amount input */}
+        {pendingCategory && (
+          <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
+            <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+              {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+            </div>
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+              <input
+                autoFocus
+                placeholder="e.g. 200"
+                value={pendingAmount}
+                onChange={e => setPendingAmt(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
+                type="number" inputMode="numeric"
+                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+              <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Custom category chips */}
+        {selectedCats.filter(c => c.custom).length > 0 && (
+          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap" }}>
+            {selectedCats.filter(c => c.custom).map(c => {
+              const rank = selectedCats.findIndex(s => s.id === c.id);
+              return (
+                <div key={c.id} style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "6px 10px", marginRight: 6, marginBottom: 6,
+                  background: `${CAT_COLORS[rank % CAT_COLORS.length]}22`,
+                  border: `1.5px solid ${CAT_COLORS[rank % CAT_COLORS.length]}`,
+                  borderRadius: 14, fontSize: 11, fontWeight: "700",
+                  color: CAT_COLORS[rank % CAT_COLORS.length],
+                }}>
+                  {rank + 1} {c.label} · ${c.monthly}/mo
+                  <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add your own */}
+        {selectedCats.length < MAX_CATS && !showCustomInput && (
+          <div
+            onClick={() => setShowCustomInput(true)}
+            style={{
+              marginTop: 8, padding: "10px 6px",
+              background: "rgba(255,255,255,0.38)",
+              border: "1.5px dashed rgba(100,90,60,0.35)",
+              borderRadius: 6, textAlign: "center", cursor: "pointer",
+              fontSize: 10, fontWeight: "700", color: MUTED,
+              letterSpacing: "0.05em", textTransform: "uppercase",
+            }}
+          >
+            + Add your own
+          </div>
+        )}
+        {showCustomInput && (
+          <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
+            <input
+              placeholder="e.g. Kids' activities"
+              value={customLabel}
+              onChange={e => setCustomLabel(e.target.value)}
+              style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+            />
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+              <input
+                placeholder="350"
+                value={customAmount}
+                onChange={e => setCustomAmount(e.target.value)}
+                type="number" inputMode="numeric"
+                style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => {
+                  if (!customLabel.trim() || !customAmount) return;
+                  const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
+                  setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                  setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
+                }}
+                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
+              >Add</button>
+              <button
+                onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
+                style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
+              >Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <button
         style={btnPrimary(!canProceed)}
-        onClick={() => canProceed && onDone({ income: parseFloat(income), needs: parseFloat(needs), downPct: parseFloat(downPct), cats: selectedCats })}
+        onClick={() => canProceed && onDone({
+          income: parseFloat(income),
+          essentialsTotal,
+          essentials,
+          downPct: parseFloat(downPct),
+          cats: selectedCats,
+        })}
       >
         Start Using Livable →
       </button>
+    </div>
     </div>
   );
 }
 
 // ── Screen: Address Entry ─────────────────────────────────────────────────
-function AddressScreen({ usesLeft, onSearch, profile }) {
+function AddressScreen({ usesLeft, onSearch, onEditProfile }) {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -309,72 +495,83 @@ function AddressScreen({ usesLeft, onSearch, profile }) {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
-      <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <div style={{ fontSize: 34, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase", marginTop: 3 }}>
-          Does this home fit your life?
-        </div>
-      </div>
-
-      <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "24px 20px", marginBottom: 16, boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
-          Paste or type an address
-        </div>
-        <input
-          style={{ ...inputStyle }}
-          placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleGo()}
-          autoFocus
-        />
-        {error && (
-          <div style={{ fontSize: 11, color: HOUSING_COLOR, marginTop: 8 }}>{error}</div>
+    <div style={{
+      width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
+      height: "100%",
+      overflow: "hidden",
+      position: "relative",
+      paddingBottom: "env(safe-area-inset-bottom)",
+    }}>
+      {/* Avatar — floats top-right */}
+      <div
+        onClick={onEditProfile}
+        style={{
+          position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 14px)", right: 16,
+          width: 40, height: 40, borderRadius: "50%",
+          background: "rgba(255,255,255,0.45)",
+          border: "1.5px solid rgba(100,90,60,0.22)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", zIndex: 10,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+        </svg>
+        {usesLeft === 0 && (
+          <div style={{
+            position: "absolute", top: -2, right: -2,
+            width: 16, height: 16, borderRadius: "50%",
+            background: "#C8412A",
+            color: CREAM, fontSize: 9, fontWeight: "800",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            !
+          </div>
         )}
-        <button
-          style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }}
-          onClick={handleGo}
-        >
-          {loading ? "Looking up property…" : "See If It Fits →"}
-        </button>
       </div>
 
-      {/* Usage counter */}
-      <div style={{ textAlign: "center", fontSize: 10, color: MUTED, letterSpacing: "0.08em" }}>
-        {usesLeft > 0
-          ? `${3 - usesLeft} of 3 free looks used`
-          : "3 of 3 free looks used"}
+      {/* Wordmark + input — centered as one block */}
+      <div style={{
+        position: "absolute",
+        top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "calc(100% - 28px)",
+        maxWidth: MOBILE_MAX - 28,
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.03em" }}>LIVABLE</div>
+        </div>
+        <div style={{ background: "rgba(255,255,255,0.45)", borderRadius: 8, padding: "20px 18px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)" }}>
+          <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8, textAlign: "center" }}>
+            Paste or type an address
+          </div>
+          <input
+            style={{ ...inputStyle }}
+            placeholder="e.g. 2847 Elmwood Ave, Indianapolis IN"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleGo()}
+            autoFocus
+          />
+          {error && (
+            <div style={{ fontSize: 11, color: HOUSING_COLOR, marginTop: 8 }}>{error}</div>
+          )}
+          <button style={{ ...btnPrimary(loading || !address.trim()), marginTop: 12 }} onClick={handleGo}>
+            {loading ? "Looking up property…" : "See If It Fits →"}
+          </button>
+        </div>
       </div>
 
-      {/* Profile summary */}
-      <div style={{ marginTop: 24, padding: "14px 16px", background: "rgba(255,255,255,0.3)", borderRadius: 6 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>Your Profile</div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.7 }}>
-          <span style={{ color: MUTED }}>Take-home</span> ${profile.income.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Essentials</span> ${profile.needs.toLocaleString()}/mo ·{" "}
-          <span style={{ color: MUTED }}>Down</span> {profile.downPct}%
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-          {profile.cats.map((id, i) => {
-            const cat = CATS.find(c => c.id === id);
-            return (
-              <div key={id} style={{
-                fontSize: 9, padding: "3px 8px",
-                background: `${CAT_COLORS[i % CAT_COLORS.length]}22`,
-                border: `1px solid ${CAT_COLORS[i % CAT_COLORS.length]}`,
-                borderRadius: 10, color: CAT_COLORS[i % CAT_COLORS.length],
-                fontWeight: "600", letterSpacing: "0.06em",
-              }}>
-                {i + 1} {cat?.label}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 9, color: MUTED, cursor: "pointer", letterSpacing: "0.1em", textDecoration: "underline" }}
-          onClick={() => window.location.reload()}>
-          Edit profile
-        </div>
+      {/* Free looks counter — pinned bottom */}
+      <div style={{
+        position: "absolute",
+        bottom: 24, left: 0, right: 0,
+        textAlign: "center",
+        fontSize: 10, color: MUTED, letterSpacing: "0.08em",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}>
+        {usesLeft > 0 ? `${3 - usesLeft} of 3 free looks used` : "3 of 3 free looks used"}
       </div>
     </div>
   );
@@ -423,7 +620,7 @@ function PaywallOverlay({ onClose }) {
 }
 
 // ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, useCount, shareCount, onBack, onShare }) {
+function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, onCatAmountChange }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -431,8 +628,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
   const [dims, setDims]       = useState({ w: 600, h: 300 });
   const [draggingEdge, setDraggingEdge] = useState(null);
   const [hoveredEdge, setHoveredEdge]   = useState(null);
-  const [activeSlider, setActiveSlider] = useState(null);
-  const [longPressTimer, setLongPressTimer] = useState(null);
+  const [editingTile, setEditingTile]   = useState(null);
+  const [editingAmount, setEditingAmt]  = useState("");
   const [photoExpanded, setPhotoExpanded] = useState(false);
   const containerRef = useRef(null);
   const dragRef      = useRef(null);
@@ -449,31 +646,17 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     const insurance = Math.round(property.price * 0.005 / 12);
     const housingMonthly = payment + pmi + taxes + insurance;
 
-    const remaining = inc - housingMonthly - profile.needs;
-    const lifestylePool = Math.max(remaining, 100);
-    const weights = taperWeights(profile.cats.length);
-
-    const catTiles = profile.cats.map((id, i) => {
-      const cat = CATS.find(c => c.id === id);
-      return {
-        id, label: cat.label,
-        value: Math.max(lifestylePool * weights[i], inc * 0.03),
-        color: CAT_COLORS[i % CAT_COLORS.length],
-        locked: false,
-      };
-    });
-
-    const rawNonHousing = [
-      { id: "needs", label: "Essentials", value: Math.max(profile.needs, inc * 0.03), locked: false, color: NEEDS_COLOR },
-      ...catTiles,
-    ];
-    const rawSum = rawNonHousing.reduce((s, t) => s + t.value, 0);
-    const targetSum = inc - housingMonthly;
-    const scale = targetSum > 0 && rawSum > 0 ? targetSum / rawSum : 1;
-
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
-      ...rawNonHousing.map(t => ({ ...t, value: Math.max(t.value * scale, inc * 0.025) })),
+      { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, 1), locked: true, color: NEEDS_COLOR },
+      ...profile.cats.map((cat, i) => ({
+        id: cat.id,
+        label: cat.label,
+        value: Math.max(cat.monthly || 0, 1),
+        color: CAT_COLORS[i % CAT_COLORS.length],
+        locked: false,
+        custom: cat.custom,
+      })),
     ]);
   }, [property, profile, rate, downPct, inc]);
 
@@ -584,35 +767,15 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     };
   }, [draggingEdge, moveEdge]);
 
-  const startLongPress = useCallback((e, id) => {
-    if (e.touches?.length > 1) return;
-    const tile = tiles.find(t => t.id === id);
-    if (tile?.locked) return;
-    const cx = e.touches ? e.touches[0].clientX : e.clientX;
-    const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    const timer = setTimeout(() => {
-      const bRect = containerRef.current?.getBoundingClientRect();
-      setActiveSlider({ id, x: cx - (bRect?.left || 0), y: cy - (bRect?.top || 0) });
-    }, 500);
-    setLongPressTimer(timer);
-  }, [tiles]);
-
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimer) { clearTimeout(longPressTimer); setLongPressTimer(null); }
-  }, [longPressTimer]);
-
-  const adjustSlider = useCallback((id, newPct) => {
-    setTiles(prev => {
-      const nonLockedTotal = prev.filter(t => !t.locked && t.id !== id).reduce((s, t) => s + t.value, 0);
-      const currentPct = (prev.find(t => t.id === id)?.value / inc) * 100;
-      const diff = ((newPct - currentPct) / 100) * inc;
-      return prev.map(t => {
-        if (t.id === id) return { ...t, value: Math.max(8, t.value + diff) };
-        if (!t.locked && nonLockedTotal > 0) return { ...t, value: Math.max(8, t.value - (t.value / nonLockedTotal) * diff) };
-        return t;
-      });
-    });
-  }, [inc]);
+  const confirmEdit = useCallback(() => {
+    const val = parseFloat(editingAmount);
+    if (isNaN(val) || val < 0) return;
+    const newVal = Math.max(val, 1);
+    setTiles(prev => prev.map(t => t.id === editingTile ? { ...t, value: newVal } : t));
+    if (onCatAmountChange) onCatAmountChange(editingTile, newVal);
+    setEditingTile(null);
+    setEditingAmt("");
+  }, [editingTile, editingAmount, onCatAmountChange]);
 
   const getEdgePos = (def) => {
     const rm = Object.fromEntries(rects.map(r => [r.id, r]));
@@ -650,8 +813,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
     <div style={{
       width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto",
       display: "flex", flexDirection: "column",
-      height: "100dvh",
-      padding: "8px 14px env(safe-area-inset-bottom, 8px)",
+      height: "100%",
+      padding: "calc(env(safe-area-inset-top, 0px) + 8px) 14px calc(env(safe-area-inset-bottom, 0px) + 8px)",
       boxSizing: "border-box",
       gap: 6,
     }}>
@@ -734,7 +897,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         style={{
           borderRadius: 6, overflow: "hidden",
           boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
-          position: "relative", height: 110, background: INK,
+          position: "relative", height: 80, background: INK,
           cursor: "pointer", flexShrink: 0,
         }}
       >
@@ -781,11 +944,12 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
         </div>
       </div>
 
-      {/* Treemap — fills remaining space */}
+      {/* Treemap — capped at 44dvh so tiles stay roughly square on any phone */}
       <div
         ref={containerRef}
         style={{
-          flex: 1,
+          flex: "1 1 auto",
+          maxHeight: "44dvh",
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -798,28 +962,25 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           const pct = (tile.value / inc) * 100;
           const pad = rect.w < 50 ? 5 : 10;
 
-          // Label sizing uses both dimensions; fall back to vertical only at min readable size
-          const labelSizeRaw = Math.min(rect.w / 9, rect.h / 11, 10);
-          const labelSize = Math.max(7, labelSizeRaw);
-          const labelClips = (tile.label.length * labelSize * 0.65) > (rect.w - pad * 2);
-          const useVertical = labelClips && labelSizeRaw <= 7 && rect.h > 55;
+          const catDef = CATS.find(c => c.id === tile.id);
+          const availW = rect.w - pad * 2 - 4;
+          const fullFits    = (tile.label.length * 6.0) <= availW;
+          const shortLabel  = catDef?.shortLabel || tile.label;
+          const shortFits   = (shortLabel.length * 6.0) <= availW;
+          const displayLabel = fullFits ? tile.label : shortLabel;
+          const horizontalFits = fullFits || shortFits;
+          const useVertical = !horizontalFits && rect.h > 60;
 
-          const pctSize = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
-          const moSize  = Math.max(6, Math.min(10, rect.w / 9));
-          const showMo  = rect.h > (labelSize + pctSize + moSize + 18);
-
-          const vLabelSize = Math.max(7, Math.min(9, rect.w / 5));
-          const vPctSize   = Math.max(9, Math.min(18, rect.w / 3.5));
+          const pctSize  = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
+          const moSize   = Math.max(6, Math.min(10, rect.w / 9));
+          const showMo   = !useVertical && rect.h > (12 + pctSize + moSize + 18);
+          const labelSize = Math.max(7, Math.min(10, rect.w / 9));
+          const vMoSize  = Math.max(6, Math.min(8, rect.w / 6));
 
           return (
             <div
               key={rect.id}
-              onMouseDown={e => startLongPress(e, rect.id)}
-              onMouseUp={cancelLongPress}
-              onMouseLeave={cancelLongPress}
-              onTouchStart={e => { e.stopPropagation(); startLongPress(e, rect.id); }}
-              onTouchEnd={e => { e.stopPropagation(); cancelLongPress(); }}
-              onTouchMove={e => e.stopPropagation()}
+              onClick={() => { if (!tile.locked && !draggingEdge) { setEditingTile(tile.id); setEditingAmt(String(Math.round(tile.value))); } }}
               style={{
                 position: "absolute",
                 left: rect.x, top: rect.y,
@@ -828,36 +989,42 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                 borderRadius: 8,
                 transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
-                cursor: tile.locked ? "default" : "grab",
+                cursor: tile.locked ? "default" : "pointer",
               }}
             >
-              {tile.locked && rect.w > 60 && !useVertical && (
+              {tile.locked && rect.w > 60 && (
                 <div style={{ position: "absolute", top: 5, right: 7, fontSize: 7, letterSpacing: "0.12em", color: "rgba(252,246,224,0.45)", textTransform: "uppercase" }}>FIXED</div>
               )}
 
               {useVertical ? (
-                // Label on left (vertical-lr), percentage centered in remaining space — no collision
-                <div style={{ position: "absolute", inset: 0, display: "flex", padding: `${pad}px` }}>
+                // Vertical: label LEFT (upward), pct+dollar RIGHT
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "row", padding: `${pad}px` }}>
                   <div style={{
-                    writingMode: "vertical-lr",
-                    fontSize: vLabelSize, fontWeight: "700",
+                    writingMode: "vertical-rl",
+                    transform: "rotate(180deg)",
+                    fontSize: Math.max(7, Math.min(9, rect.w / 5)),
+                    fontWeight: "700",
                     letterSpacing: "0.06em", textTransform: "uppercase",
                     color: "rgba(252,246,224,0.75)",
                     overflow: "hidden", marginRight: 3, flexShrink: 0,
                     textShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                    alignSelf: "flex-start",
                   }}>
-                    {tile.label}
+                    {displayLabel}
                   </div>
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <div style={{ fontSize: vPctSize, fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center" }}>
+                    <div style={{ fontSize: Math.max(9, Math.min(18, rect.w / 3.5)), fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
                       {pct.toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap" }}>
+                      ${Math.round(tile.value).toLocaleString()}/mo
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div style={{ position: "absolute", top: pad, left: pad, right: pad, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+              ) : horizontalFits ? (
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
                   <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>
-                    {tile.label}
+                    {displayLabel}
                   </div>
                   <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
                     {pct.toFixed(0)}%
@@ -868,10 +1035,44 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
                     </div>
                   )}
                 </div>
+              ) : (
+                // Tiny tile — pct only, centered
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ fontSize: Math.max(8, Math.min(16, rect.w * 0.45)), fontWeight: "800", color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                    {pct.toFixed(0)}%
+                  </div>
+                </div>
               )}
             </div>
           );
         })}
+
+        {/* Tile edit popover */}
+        {editingTile && (
+          <div
+            style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}
+            onClick={() => { setEditingTile(null); setEditingAmt(""); }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{ background: BG, borderRadius: 8, padding: "18px 16px", width: 220, boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
+              <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 10 }}>
+                {tiles.find(t => t.id === editingTile)?.label} — monthly
+              </div>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  autoFocus type="number" inputMode="numeric"
+                  value={editingAmount}
+                  onChange={e => setEditingAmt(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") { setEditingTile(null); setEditingAmt(""); } }}
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <button onClick={confirmEdit} disabled={!editingAmount} style={{ ...btnPrimary(!editingAmount), padding: "9px 14px", fontSize: 9 }}>
+                Update
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Edge handles */}
         {edgeDefs.map(def => {
@@ -920,76 +1121,49 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare })
           );
         })}
 
-        {/* Slider popup */}
-        {activeSlider && (() => {
-          const tile = tiles.find(t => t.id === activeSlider.id);
-          if (!tile || tile.locked) return null;
-          const pct = (tile.value / inc) * 100;
-          const popW = 220, popH = 88;
-          const px = Math.min(dims.w - popW - 8, Math.max(8, activeSlider.x - popW / 2));
-          const py = Math.min(dims.h - popH - 8, Math.max(8, activeSlider.y - popH - 12));
-          return (
-            <>
-              <div style={{ position: "absolute", inset: 0, zIndex: 45 }}
-                onMouseDown={() => setActiveSlider(null)}
-                onTouchStart={e => { e.stopPropagation(); setActiveSlider(null); }}
-              />
-              <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-                style={{
-                  position: "absolute", left: px, top: py, width: popW, zIndex: 50,
-                  padding: "12px 14px", background: "rgba(22,18,10,0.96)",
-                  border: `1px solid ${tile.color}55`, borderRadius: 4,
-                  boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
-                }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 9, color: "rgba(252,246,224,0.5)", letterSpacing: "0.16em", textTransform: "uppercase" }}>{tile.label}</div>
-                    <div style={{ marginTop: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: "700", color: tile.color }}>{pct.toFixed(1)}%</span>
-                      <span style={{ fontSize: 9, color: "rgba(252,246,224,0.4)", marginLeft: 8 }}>${Math.round(tile.value).toLocaleString()}/mo</span>
-                    </div>
-                  </div>
-                  <div onMouseDown={() => setActiveSlider(null)} onTouchStart={e => { e.stopPropagation(); setActiveSlider(null); }}
-                    style={{ fontSize: 20, color: "rgba(252,246,224,0.35)", cursor: "pointer", padding: "2px 4px" }}>×</div>
-                </div>
-                <input type="range" min={0.5} max={40} step={0.5} value={pct}
-                  onChange={e => adjustSlider(activeSlider.id, parseFloat(e.target.value))}
-                  style={{ width: "100%", accentColor: tile.color, cursor: "pointer" }}
-                />
-              </div>
-            </>
-          );
-        })()}
       </div>
 
-      {/* Live verdict — single line, no % subtitle in badge */}
-      <div style={{
-        padding: "8px 10px", borderRadius: 6,
-        background: `${verdict.color}14`,
-        border: `1.5px solid ${verdict.color}55`,
-        display: "flex", alignItems: "center", gap: 8,
-        flexShrink: 0,
-      }}>
-        <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
-          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-            {signal.label}
+      {/* Verdict + actions — sit directly below treemap, no gap in middle */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{
+          padding: "8px 10px", borderRadius: 6,
+          background: `${verdict.color}14`,
+          border: `1.5px solid ${verdict.color}55`,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "3px 8px" }}>
+            <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+              {signal.label}
+            </div>
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 11, color: INK, lineHeight: 1.4 }}>{verdict.text}</div>
+            {(() => {
+              const totalSpend = tiles.reduce((s, t) => s + t.value, 0);
+              const surplus = inc - totalSpend;
+              return (
+                <div style={{ fontSize: 10, color: surplus >= 0 ? "#4A9B6F" : "#C8412A", fontWeight: "600", marginTop: 3 }}>
+                  {surplus >= 0
+                    ? `+$${Math.round(surplus).toLocaleString()}/mo unallocated`
+                    : `-$${Math.round(Math.abs(surplus)).toLocaleString()}/mo over budget`}
+                </div>
+              );
+            })()}
           </div>
         </div>
-        <div style={{ fontSize: 11, color: INK, lineHeight: 1.4, minWidth: 0, flex: 1 }}>{verdict.text}</div>
-      </div>
 
-      {/* Actions — marginTop auto pins to bottom of flex column */}
-      <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
-        <button
-          style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
-          onClick={onBack}
-        >← New</button>
-        <button
-          style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
-          onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
-        >
-          Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
+            onClick={onBack}
+          >← New</button>
+          <button
+            style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
+            onClick={() => onShare({ tiles, property, signal, housingPct, rate, downPct })}
+          >
+            Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1190,15 +1364,15 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
   useEffect(() => {
     if (cachedSummary) { setSummary(cachedSummary); setLoading(false); setRevealed(true); return; }
-    const catTiles = tiles.filter(t => t.id !== "housing" && t.id !== "needs");
     generateSummary({
       address: property.address,
       price: property.price,
       monthlyHousing: tiles.find(t => t.id === "housing")?.value || 0,
       income: inc,
+      essentialsTotal: profile.essentialsTotal,
       housingPct,
       signal,
-      cats: catTiles.map(t => ({ label: t.label, pct: (t.value / inc) * 100, monthly: t.value })),
+      cats: profile.cats.map(c => ({ label: c.label, monthly: c.monthly })),
       downPct,
       rate,
     }).then(text => {
@@ -1210,12 +1384,17 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
     });
   }, []);
 
-  const paragraphs = summary ? summary.split("\n\n").filter(Boolean) : [];
-
   const SVG_W = 480, SVG_H = 200, SVG_GAP = 3;
   const shareRects = computeRects(tiles, SVG_W, SVG_H, SVG_GAP);
 
   return (
+    <div style={{
+      height: "100%", overflowY: "auto", overscrollBehavior: "contain",
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)",
+      paddingLeft: 14, paddingRight: 14,
+      boxSizing: "border-box",
+    }}>
     <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto" }}>
       <div id="livable-export-card" style={{
         background: CREAM, borderRadius: 8,
@@ -1330,42 +1509,26 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
           {/* AI Summary */}
           <div style={{ marginBottom: 14 }}>
-            {loading ? <HouseLoader done={done} /> : revealed ? (
+            {loading ? <HouseLoader done={done} /> : null}
+            {!loading && revealed && summary ? (
               <div style={{
                 animation: cachedSummary ? "none" : "livable-reveal 0.6s cubic-bezier(0.16,1,0.3,1) both",
-                overflow: "hidden",
+                fontSize: 13, color: INK, lineHeight: 1.65,
+                padding: "4px 0",
               }}>
-                {paragraphs.length > 0 ? paragraphs.map((p, i) => {
-                  const boldMatch = p.match(/^\*\*(.+?)\*\*\s*[—–-]?\s*([\s\S]*)/);
-                  if (boldMatch) {
-                    return (
-                      <div key={i} style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontWeight: "800", color: INK, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                          {boldMatch[1]}
-                        </div>
-                        <div style={{ fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                          {boldMatch[2]}
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={i} style={{ marginBottom: 12, fontSize: 11, color: INK, lineHeight: 1.65 }}>
-                      {p.replace(/\*\*/g, "")}
-                    </div>
-                  );
-                }) : (
-                  <div style={{
-                    background: "rgba(200,65,42,0.08)",
-                    border: "1px solid rgba(200,65,42,0.3)",
-                    borderRadius: 6, padding: "12px 14px",
-                    fontSize: 11, color: INK, lineHeight: 1.5,
-                  }}>
-                    We couldn't generate the summary right now. The math and breakdown below are still accurate.
-                  </div>
-                )}
+                {summary}
               </div>
             ) : null}
+            {!loading && (!summary || summary.trim().length === 0) && (
+              <div style={{
+                background: "rgba(200,65,42,0.08)",
+                border: "1px solid rgba(200,65,42,0.3)",
+                borderRadius: 6, padding: "12px 14px",
+                fontSize: 11, color: INK, lineHeight: 1.5,
+              }}>
+                We couldn't generate the summary right now. The math and breakdown below are still accurate.
+              </div>
+            )}
           </div>
 
           {/* Budget breakdown table */}
@@ -1430,6 +1593,297 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
         </button>
       </div>
     </div>
+    </div>
+  );
+}
+
+// ── Profile editor overlay ─────────────────────────────────────────────────
+function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
+  const [income, setIncome]         = useState(profile.income.toString());
+  const [essentials, setEssentials] = useState(profile.essentials || {});
+  const [downPct, setDownPct]       = useState(profile.downPct.toString());
+  const [selectedCats, setSelected]       = useState(profile.cats);
+  const [pendingCategory, setPendingCat]  = useState(null);
+  const [pendingAmount, setPendingAmt]    = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customLabel, setCustomLabel]         = useState("");
+  const [customAmount, setCustomAmount]       = useState("");
+  const MAX_CATS = 5;
+
+  const toggleCat = (id) => {
+    const existingIdx = selectedCats.findIndex(c => c.id === id);
+    if (existingIdx >= 0) { setSelected(prev => prev.filter((_, i) => i !== existingIdx)); return; }
+    if (selectedCats.length >= MAX_CATS) return;
+    setPendingCat(id);
+    setPendingAmt("");
+  };
+
+  const confirmPending = () => {
+    if (!pendingCategory || !pendingAmount) return;
+    const def = CATS.find(c => c.id === pendingCategory);
+    setSelected(prev => [...prev, { id: pendingCategory, label: def?.label || pendingCategory, monthly: parseFloat(pendingAmount), custom: false }]);
+    setPendingCat(null);
+    setPendingAmt("");
+  };
+
+  const essentialsTotal = Object.values(essentials).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100,
+      background: BG,
+      overflowY: "auto",
+      paddingBottom: "env(safe-area-inset-bottom)",
+      fontFamily: font,
+    }}>
+      <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", padding: "20px 14px 40px", paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)", boxSizing: "border-box" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
+          <div onClick={onClose} style={{ fontSize: 28, color: INK, cursor: "pointer", lineHeight: 1, marginRight: 14 }}>×</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.22em", color: INK, textTransform: "uppercase", fontWeight: "700" }}>Edit Profile</div>
+        </div>
+
+        {/* Income */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+            Monthly take-home pay
+          </div>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13 }}>$</span>
+            <input style={{ ...inputStyle, paddingLeft: 24 }} placeholder="e.g. 7500" value={income} onChange={e => setIncome(e.target.value)} type="number" inputMode="numeric" />
+          </div>
+        </div>
+
+        {/* Essentials breakdown */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+            Monthly essentials
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {ESSENTIAL_FIELDS.map(f => (
+              <div key={f.id}>
+                <div style={{ fontSize: 9, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+                  {f.label}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 14 }}>$</span>
+                  <input
+                    style={{ ...inputStyle, padding: "9px 11px 9px 22px" }}
+                    placeholder={f.placeholder}
+                    value={essentials[f.id] || ""}
+                    onChange={e => setEssentials(prev => ({ ...prev, [f.id]: e.target.value }))}
+                    type="number"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Down payment */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>
+            Down payment — {downPct}%
+            {parseFloat(downPct) < 20 && <span style={{ color: "#D97B3A", marginLeft: 6 }}>PMI applies</span>}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["5","10","15","20","25","30"].map(p => (
+              <div
+                key={p}
+                onClick={() => setDownPct(p)}
+                style={{
+                  flex: 1, textAlign: "center", padding: "7px 0",
+                  background: downPct === p ? INK : "rgba(255,255,255,0.45)",
+                  border: `1.5px solid ${downPct === p ? INK : "rgba(100,90,60,0.2)"}`,
+                  borderRadius: 4, fontSize: 10, fontWeight: "600",
+                  color: downPct === p ? CREAM : INK,
+                  cursor: "pointer", fontFamily: font,
+                  transition: "all 0.12s",
+                }}
+              >
+                {p}%
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Lifestyle priorities */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 9, fontWeight: "700", color: INK, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+            Top lifestyle priorities
+          </div>
+          <div style={{ fontSize: 8, color: MUTED, marginBottom: 6 }}>
+            Tap in order. First tap = most important. Up to {MAX_CATS}.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+            {CATS.map((cat) => {
+              const rank = selectedCats.findIndex(c => c.id === cat.id);
+              const selected = rank !== -1;
+              const isPending = pendingCategory === cat.id;
+              const atLimit = selectedCats.length >= MAX_CATS && !selected;
+              return (
+                <div
+                  key={cat.id}
+                  onClick={() => !isPending && toggleCat(cat.id)}
+                  style={{
+                    background: isPending ? `${CAT_COLORS[0]}18` : selected ? `${CAT_COLORS[rank % CAT_COLORS.length]}22` : "rgba(255,255,255,0.38)",
+                    border: `1.5px solid ${isPending ? CAT_COLORS[0] : selected ? CAT_COLORS[rank % CAT_COLORS.length] : "rgba(100,90,60,0.18)"}`,
+                    borderRadius: 6, padding: "10px 6px",
+                    cursor: atLimit ? "default" : "pointer",
+                    opacity: atLimit ? 0.38 : 1,
+                    textAlign: "center", position: "relative",
+                    transition: "all 0.12s",
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: "700", color: INK, letterSpacing: "0.05em", textTransform: "uppercase" }}>{cat.label}</div>
+                  {selected && (
+                    <>
+                      <div style={{
+                        position: "absolute", top: -6, right: -6,
+                        width: 18, height: 18, borderRadius: "50%",
+                        background: CAT_COLORS[rank % CAT_COLORS.length],
+                        color: CREAM, fontSize: 9, fontWeight: "800",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                      }}>
+                        {rank + 1}
+                      </div>
+                      <div style={{ fontSize: 8, color: CAT_COLORS[rank % CAT_COLORS.length], marginTop: 2, opacity: 0.85 }}>
+                        ${Math.round(selectedCats[rank]?.monthly || 0).toLocaleString()}/mo
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pending category amount input */}
+          {pendingCategory && (
+            <div style={{ marginTop: 10, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, border: "1.5px solid rgba(100,90,60,0.2)" }}>
+              <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+                {CATS.find(c => c.id === pendingCategory)?.label} — monthly budget?
+              </div>
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  autoFocus
+                  placeholder="e.g. 200"
+                  value={pendingAmount}
+                  onChange={e => setPendingAmt(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") confirmPending(); if (e.key === "Escape") { setPendingCat(null); setPendingAmt(""); } }}
+                  type="number" inputMode="numeric"
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmPending} disabled={!pendingAmount} style={{ ...btnPrimary(!pendingAmount), padding: "8px 14px", fontSize: 9 }}>Add</button>
+                <button onClick={() => { setPendingCat(null); setPendingAmt(""); }} style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Custom category chips */}
+          {selectedCats.filter(c => c.custom).length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap" }}>
+              {selectedCats.filter(c => c.custom).map(c => {
+                const rank = selectedCats.findIndex(s => s.id === c.id);
+                return (
+                  <div key={c.id} style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "6px 10px", marginRight: 6, marginBottom: 6,
+                    background: `${CAT_COLORS[rank % CAT_COLORS.length]}22`,
+                    border: `1.5px solid ${CAT_COLORS[rank % CAT_COLORS.length]}`,
+                    borderRadius: 14, fontSize: 11, fontWeight: "700",
+                    color: CAT_COLORS[rank % CAT_COLORS.length],
+                  }}>
+                    {rank + 1} {c.label} · ${c.monthly}/mo
+                    <span onClick={() => setSelected(prev => prev.filter(s => s.id !== c.id))} style={{ cursor: "pointer", marginLeft: 4, opacity: 0.6 }}>×</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add your own */}
+          {selectedCats.length < MAX_CATS && !showCustomInput && (
+            <div
+              onClick={() => setShowCustomInput(true)}
+              style={{
+                marginTop: 8, padding: "10px 6px",
+                background: "rgba(255,255,255,0.38)",
+                border: "1.5px dashed rgba(100,90,60,0.35)",
+                borderRadius: 6, textAlign: "center", cursor: "pointer",
+                fontSize: 10, fontWeight: "700", color: MUTED,
+                letterSpacing: "0.05em", textTransform: "uppercase",
+              }}
+            >
+              + Add your own
+            </div>
+          )}
+          {showCustomInput && (
+            <div style={{ marginTop: 10, padding: 10, background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>
+              <input
+                placeholder="e.g. Kids' activities"
+                value={customLabel}
+                onChange={e => setCustomLabel(e.target.value)}
+                style={{ ...inputStyle, fontSize: 16, marginBottom: 8 }}
+              />
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                <input
+                  placeholder="350"
+                  value={customAmount}
+                  onChange={e => setCustomAmount(e.target.value)}
+                  type="number" inputMode="numeric"
+                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => {
+                    if (!customLabel.trim() || !customAmount) return;
+                    const newCat = { id: `custom_${Math.random().toString(36).slice(2, 8)}`, label: customLabel.trim(), monthly: parseFloat(customAmount), custom: true };
+                    setSelected(prev => prev.length < MAX_CATS ? [...prev, newCat] : prev);
+                    setCustomLabel(""); setCustomAmount(""); setShowCustomInput(false);
+                  }}
+                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9 }}
+                >Add</button>
+                <button
+                  onClick={() => { setShowCustomInput(false); setCustomLabel(""); setCustomAmount(""); }}
+                  style={{ ...btnPrimary(false), padding: "8px 14px", fontSize: 9, background: "transparent", color: INK, border: "1.5px solid rgba(100,90,60,0.3)" }}
+                >Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button
+          style={btnPrimary(false)}
+          onClick={() => onSave({
+            income: parseFloat(income) || profile.income,
+            essentialsTotal,
+            essentials,
+            downPct: parseFloat(downPct),
+            cats: selectedCats,
+          })}
+        >
+          Save Changes
+        </button>
+
+        <div
+          onClick={() => { if (confirm("Start over? This will clear your profile.")) onStartOver(); }}
+          style={{
+            textAlign: "center", marginTop: 16, padding: "8px",
+            fontSize: 10, color: MUTED, letterSpacing: "0.1em",
+            textTransform: "uppercase", cursor: "pointer", textDecoration: "underline",
+          }}
+        >
+          Start over
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1437,17 +1891,28 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [screen, setScreen]     = useState("onboarding");
-  const [profile, setProfile]   = useState(null);
-  const [property, setProperty] = useState(null);
-  const [useCount, setUseCount] = useState(0);
-  const [shareCount, setShareCount] = useState(0);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [shareData, setShareData]   = useState(null);
+  const [profile, setProfile]             = useState(loadProfile);
+  const [screen, setScreen]               = useState(() => loadProfile() ? "address" : "onboarding");
+  const [property, setProperty]           = useState(null);
+  const [useCount, setUseCount]           = useState(0);
+  const [shareCount, setShareCount]       = useState(0);
+  const [showPaywall, setShowPaywall]     = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [shareData, setShareData]         = useState(null);
   const [cachedSummary, setCachedSummary] = useState(null);
   const [cachedSummaryKey, setCachedSummaryKey] = useState(null);
 
-  const handleOnboarding = (prof) => { setProfile(prof); setScreen("address"); };
+  const handleOnboarding = (prof) => { setProfile(prof); saveProfile(prof); setScreen("address"); };
+
+  const handleProfileSave = (prof) => { setProfile(prof); saveProfile(prof); setShowProfileEditor(false); };
+
+  const handleCatAmountChange = (catId, newMonthly) => {
+    setProfile(prev => {
+      const updated = { ...prev, cats: prev.cats.map(c => c.id === catId ? { ...c, monthly: newMonthly } : c) };
+      saveProfile(updated);
+      return updated;
+    });
+  };
 
   const handleSearch = (prop) => {
     if (useCount >= 3) { setShowPaywall(true); return; }
@@ -1474,14 +1939,11 @@ export default function App() {
     setScreen("share");
   };
 
-  const isMap = screen === "map";
   return (
     <div style={{
       background: BG,
-      ...(isMap
-        ? { height: "100dvh", overflow: "hidden", padding: 0 }
-        : { minHeight: "100dvh", padding: "16px 14px 32px" }
-      ),
+      height: "100%",
+      overflow: "hidden",
       display: "flex", flexDirection: "column", alignItems: "stretch",
       fontFamily: font,
       boxSizing: "border-box",
@@ -1489,10 +1951,18 @@ export default function App() {
       overscrollBehavior: "none",
     }}>
       {showPaywall && <PaywallOverlay onClose={() => setShowPaywall(false)} />}
+      {showProfileEditor && profile && (
+        <ProfileEditorOverlay
+          profile={profile}
+          onSave={handleProfileSave}
+          onClose={() => setShowProfileEditor(false)}
+          onStartOver={() => { clearProfile(); setProfile(null); setShowProfileEditor(false); setScreen("onboarding"); }}
+        />
+      )}
 
-      {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} shareCount={shareCount} useCount={useCount} />}
-      {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} profile={profile} />}
-      {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} />}
+      {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
+      {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
+      {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} />}
       {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
     </div>
   );

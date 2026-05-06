@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import React from "react";
-import { Document, Page, View, Text, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Svg, Rect, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 
 // ── PDF styles ─────────────────────────────────────────────────────────────
 const PDF_INK  = "#1e1a0e";
@@ -42,22 +42,87 @@ app.use(express.json());
 // ── Anthropic client ───────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// ── Build summary prompt from raw property data ────────────────────────────
+function buildSummaryPrompt({ address, price, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }) {
+  const catList = (cats || []).map(c => `${c.label}: $${Math.round(c.monthly)}/mo`).join("; ");
+  const essLine = essentialsTotal ? `Monthly essentials (savings, healthcare, groceries, etc.): $${Math.round(essentialsTotal).toLocaleString("en-US")}\n` : "";
+
+  return `You are writing a single-paragraph lifestyle summary for LIVABLE, a home affordability app.
+
+Property: ${address} — $${Number(price).toLocaleString("en-US")} list price
+Monthly housing cost: $${Math.round(monthlyHousing).toLocaleString("en-US")} (${Number(housingPct).toFixed(0)}% of take-home)
+Down payment: ${downPct}% | Rate: ${rate}%
+Monthly take-home: $${Number(income).toLocaleString("en-US")}
+${essLine}Affordability signal: ${signal?.label || "Unknown"}
+Lifestyle spending (user-entered real amounts): ${catList}
+
+Write ONE short paragraph, 40-60 words. Use the real dollar amounts given. Integrate the math, the lifestyle impact, and the verdict in a single direct statement. Reference 1-2 of the user's specific lifestyle categories by name and dollar amount. Take a clear position — this house fits, doesn't fit, or is a real trade-off worth thinking about. Don't hedge. No section headers. No bullet points. No bold markers. Just a single direct paragraph in the voice of a smart friend who knows finance and tells the truth.`;
+}
+
+// ── Port of client-side computeRects for PDF treemap ──────────────────────
+function computeRects(tiles, W, H, gap) {
+  if (!tiles.length) return [];
+  const total = tiles.reduce((s, t) => s + t.value, 0);
+  const housing = tiles.find(t => t.id === "housing");
+  const rest = tiles.filter(t => t.id !== "housing");
+  const leftW = (housing.value / total) * (W - gap);
+  const rightW = W - leftW - gap;
+  const rightX = leftW + gap;
+  const rects = [{ id: "housing", x: 0, y: 0, w: leftW, h: H }];
+  if (!rest.length) return rects;
+  const ROW_SIZE = 3;
+  const rows = [];
+  for (let i = 0; i < rest.length; i += ROW_SIZE) rows.push(rest.slice(i, i + ROW_SIZE));
+  const rowTotals = rows.map(r => r.reduce((s, t) => s + t.value, 0));
+  const grandTotal = rowTotals.reduce((s, v) => s + v, 0);
+  let ry = 0;
+  rows.forEach((row, ri) => {
+    const rowH = (rowTotals[ri] / grandTotal) * (H - (rows.length - 1) * gap);
+    let rx = rightX;
+    row.forEach((tile, ti) => {
+      const w = ti === row.length - 1
+        ? (rightX + rightW) - rx
+        : (tile.value / rowTotals[ri]) * (rightW - (row.length - 1) * gap);
+      rects.push({ id: tile.id, x: rx, y: ry, w, h: rowH });
+      rx += w + gap;
+    });
+    ry += rowH + gap;
+  });
+  return rects;
+}
+
 // ── POST /api/summary — Claude AI summary ─────────────────────────────────
 app.post("/api/summary", async (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "prompt is required" });
+  console.log("[summary] request received", { address: req.body?.address });
+
+  let prompt;
+  try {
+    prompt = req.body?.prompt || buildSummaryPrompt(req.body);
+  } catch (buildErr) {
+    console.warn("[summary] failed to build prompt:", buildErr.message);
+    return res.status(400).json({ summary: "", error: "malformed request: " + buildErr.message });
+  }
+
+  if (!prompt || prompt.length < 20) {
+    console.warn("[summary] missing or malformed request body");
+    return res.status(400).json({ summary: "", error: "prompt or property data required" });
+  }
+
+  console.log("[summary] prompt built, length:", prompt.length);
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6-20250514",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });
+    console.log("[summary] anthropic responded, content blocks:", message.content?.length);
     const text = message.content?.[0]?.text || "";
-    res.json({ text });
+    if (!text) console.warn("[summary] anthropic returned empty text");
+    res.json({ summary: text, text });
   } catch (err) {
-    console.error("Anthropic error:", err.message);
-    res.status(500).json({ error: "Failed to generate summary" });
+    console.error("[summary] error:", err.message, err.status || "", err.stack?.split("\n")[1] || "");
+    res.status(502).json({ summary: "", text: "", error: err.message });
   }
 });
 
@@ -83,6 +148,34 @@ app.post("/api/pdf", async (req, res) => {
     }),
   ] : [];
 
+  // Treemap SVG for PDF
+  const MAP_W = 480, MAP_H = 110, MAP_GAP = 2;
+  const mapRects = computeRects(tiles, MAP_W, MAP_H, MAP_GAP);
+  const treemapSvg = h(View, { style: { marginBottom: 14 } },
+    h(Svg, { width: MAP_W, height: MAP_H, viewBox: `0 0 ${MAP_W} ${MAP_H}` },
+      ...mapRects.map(rect => {
+        const tile = tiles.find(t => t.id === rect.id);
+        if (!tile) return null;
+        const pct = (tile.value / income) * 100;
+        const pad = 4;
+        const pctSize = Math.max(8, Math.min(16, rect.w / 4));
+        const labelSize = 5.5;
+        const children = [h(Rect, { key: `r_${rect.id}`, x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: tile.color, rx: 3 })];
+        if (rect.w > 28) {
+          children.push(
+            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: "rgba(252,246,224,0.8)", fontFamily: "Helvetica" },
+              tile.label.toUpperCase()
+            ),
+            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 3 + pctSize, fontSize: pctSize, fill: "rgba(252,246,224,0.96)", fontFamily: "Helvetica-Bold" },
+              `${pct.toFixed(0)}%`
+            )
+          );
+        }
+        return children;
+      }).filter(Boolean).flat()
+    )
+  );
+
   const children = [
     h(View, { style: pdfS.header },
       h(View, null,
@@ -98,6 +191,7 @@ app.post("/api/pdf", async (req, res) => {
     h(Text, { style: pdfS.meta },
       `$${property.price.toLocaleString("en-US")} list price · ${property.beds}bd ${property.baths}ba · $${housingMonthly.toLocaleString("en-US")}/mo est. · ${rate}% · ${downPct}% down`
     ),
+    treemapSvg,
     ...summaryChildren,
     h(Text, { style: pdfS.secLabel }, `MONTHLY BREAKDOWN · $${Number(income).toLocaleString("en-US")} TAKE-HOME`),
     ...tiles.map((t, i) =>
@@ -123,44 +217,44 @@ app.post("/api/pdf", async (req, res) => {
   }
 });
 
-// ── GET /api/property — Rentcast property lookup ──────────────────────────
+// ── GET /api/property — Rentcast active listing lookup ────────────────────
 app.get("/api/property", async (req, res) => {
   const { address } = req.query;
   if (!address) return res.status(400).json({ error: "address is required" });
 
+  const headers = { "X-Api-Key": process.env.RENTCAST_API_KEY };
+  const encoded = encodeURIComponent(address);
+
   try {
-    const url = `https://api.rentcast.io/v1/properties?address=${encodeURIComponent(address)}`;
-    console.log("[Rentcast] Request URL:", url);
-    console.log("[Rentcast] API key present:", !!process.env.RENTCAST_API_KEY);
-    const response = await fetch(url, {
-      headers: { "X-Api-Key": process.env.RENTCAST_API_KEY },
-    });
+    // 1. Try active sale listing — gives current list price
+    const listingRes = await fetch(
+      `https://api.rentcast.io/v1/listings/sale?address=${encoded}&status=Active&limit=1`,
+      { headers }
+    );
+    console.log("[Rentcast] Listing status:", listingRes.status);
 
-    const body = await response.text();
-    console.log("[Rentcast] Status:", response.status);
-    console.log("[Rentcast] Headers:", JSON.stringify(Object.fromEntries(response.headers.entries())));
-    console.log("[Rentcast] Body:", body);
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: "Rentcast API error", status: response.status, detail: body });
+    if (listingRes.ok) {
+      const listings = await listingRes.json();
+      const listing = Array.isArray(listings) ? listings[0] : null;
+      console.log("[Rentcast] Listing result:", JSON.stringify(listing));
+      if (listing?.price) {
+        return res.json({
+          address: listing.formattedAddress || address,
+          price: listing.price,
+          beds: listing.bedrooms || 0,
+          baths: listing.bathrooms || 0,
+          sqft: listing.squareFootage || 0,
+          yearBuilt: listing.yearBuilt || 0,
+        });
+      }
     }
 
-    const data = JSON.parse(body);
-    const prop = Array.isArray(data) ? data[0] : data;
-    if (!prop) return res.status(404).json({ error: "Property not found", detail: "Rentcast returned empty result" });
-
-    console.log("[Rentcast] Mapped property:", JSON.stringify(prop, null, 2));
-
-    res.json({
-      address: prop.formattedAddress || prop.addressLine1 || address,
-      price: prop.price || prop.lastSalePrice || 0,
-      beds: prop.bedrooms || 0,
-      baths: prop.bathrooms || 0,
-      sqft: prop.squareFootage || 0,
-      yearBuilt: prop.yearBuilt || 0,
+    // 2. No active listing found
+    return res.status(404).json({
+      error: "No active listing found for this address. Try a property that's currently for sale.",
     });
   } catch (err) {
-    console.error("[Rentcast] Fetch error:", err.message, err.stack);
+    console.error("[Rentcast] Error:", err.message);
     res.status(500).json({ error: "Failed to fetch property", detail: err.message });
   }
 });
