@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Building2, Wrench, Plane, Dumbbell, Users, Music, UtensilsCrossed, Heart, Tv, PawPrint, Sparkles } from "lucide-react";
 
 // ── localStorage helpers ───────────────────────────────────────────────────
 const STORAGE_KEY = "livable:profile:v1";
@@ -50,7 +51,7 @@ const INK      = "#1e1a0e";
 const MUTED    = "#7a6a44";
 const HOUSING_COLOR = "#C8412A";
 const NEEDS_COLOR   = "#5a4e8a";
-const CAT_COLORS    = ["#3B7FC4","#4A9B6F","#E8A030","#D4505A","#3A9EA5","#C4963B","#7B5EA7","#D97B3A"];
+const CAT_COLORS    = ["#7B8FA1","#9BAA85","#C9A977","#B87455","#7FA89F","#B8889C","#A89378","#6B8B7E"];
 
 const MOBILE_MAX = 430;
 
@@ -309,6 +310,54 @@ async function generateSummary(data) {
     console.error("[summary] fetch failed:", e);
     return "";
   }
+}
+
+// ── Category icons ─────────────────────────────────────────────────────────
+const CATEGORY_ICON_MAP = {
+  travel: Plane, fitness: Dumbbell, social: Users, hobbies: Music,
+  dining: UtensilsCrossed, giving: Heart, subscriptions: Tv, pets: PawPrint,
+  housing: Building2, needs: Wrench, unallocated: Sparkles,
+};
+function CategoryIcon({ category, size = 20, color = INK }) {
+  const Icon = CATEGORY_ICON_MAP[category] || Sparkles;
+  return <Icon size={size} color={color} strokeWidth={1.75} />;
+}
+
+// ── Legend component ───────────────────────────────────────────────────────
+function Legend({ tiles, income, lifestyleSurplus, modified, onReset }) {
+  const rows = [
+    ...tiles.filter(t => t.id === "housing"),
+    ...tiles.filter(t => t.id === "needs"),
+    ...tiles.filter(t => t.id !== "housing" && t.id !== "needs"),
+  ];
+  if (lifestyleSurplus > 0) {
+    rows.push({ id: "unallocated", label: "Unallocated", value: lifestyleSurplus, color: "#A89378" });
+  }
+  return (
+    <div style={{ background: "rgba(252,246,224,0.4)", borderRadius: 6, padding: "8px 10px", flexShrink: 0, position: "relative" }}>
+      {modified && onReset && (
+        <div onClick={onReset} style={{ position: "absolute", top: 8, right: 10, fontSize: 9, color: MUTED, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", textDecoration: "underline" }}>
+          Reset
+        </div>
+      )}
+      {rows.map((tile, i) => {
+        const pct = Math.round((tile.value / income) * 100);
+        return (
+          <div key={tile.id} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "4px 0",
+            borderBottom: i < rows.length - 1 ? "1px solid rgba(100,90,60,0.08)" : "none",
+          }}>
+            <div style={{ width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <CategoryIcon category={tile.id} size={14} color={tile.color || MUTED} />
+            </div>
+            <div style={{ flex: 1, fontSize: 11, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tile.label}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: INK, flexShrink: 0 }}>${Math.round(tile.value).toLocaleString("en-US")}</div>
+            <div style={{ fontSize: 9, color: MUTED, minWidth: 28, textAlign: "right", flexShrink: 0 }}>{pct}%</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -930,8 +979,8 @@ function PaywallOverlay({ onClose }) {
   );
 }
 
-// ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmountChange, onEditProfile }) {
+// ── Screen: Map (Explore) ──────────────────────────────────────────────────
+function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, onGetAnalysis, onCatAmountChange, onEditProfile }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -940,7 +989,11 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
   const [editingTile, setEditingTile]   = useState(null);
   const [editingAmount, setEditingAmt]  = useState("");
   const [photoExpanded, setPhotoExpanded] = useState(false);
+  const [analyzing, setAnalyzing]       = useState(false);
+  const [analyzeError, setAnalyzeError] = useState(false);
   const containerRef = useRef(null);
+  const pinchRef     = useRef(null);
+  const pinchActiveRef = useRef(false);
   const GAP = 3;
 
   const inc = profile.income;
@@ -1015,10 +1068,35 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
   const lifestyleBandH  = Math.max(0, dims.h - housingBandH - essentialsBandH - BAND_GAP * 2);
 
   const unallocatedTile = lifestyleSurplus > 0
-    ? [{ id: "unallocated", label: "Unallocated", value: lifestyleSurplus, color: "#b5ad98", locked: true, kind: "unallocated" }]
+    ? [{ id: "unallocated", label: "Unallocated", value: lifestyleSurplus, color: "#A89378", locked: true, kind: "unallocated" }]
     : [];
   const lifestyleBandTiles = [...lifestyleTiles, ...unallocatedTile].filter(t => t.value > 0);
   const lifestyleRects  = computeBandRects(lifestyleBandTiles, dims.w, lifestyleBandH, GAP);
+
+  // Detect whether user has pinch-adjusted any tile away from profile values
+  const tilesModified = lifestyleTiles.some(t => {
+    const cat = profile.cats.find(c => c.id === t.id);
+    return cat && Math.abs((cat.monthly || 0) - Math.round(t.value)) > 1;
+  });
+
+  const resetTiles = () => {
+    const payment = monthlyPayment(property.price, downPct, rate);
+    const pmi = pmiMonthly(property.price, downPct);
+    const taxes = Math.round(property.price * 0.012 / 12);
+    const insurance = Math.round(property.price * 0.005 / 12);
+    const housingMonthly = payment + pmi + taxes + insurance;
+    const treemapCats = profile.cats.filter(c => c.kind === "recurring" || c.kind === "savings");
+    setTiles([
+      { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
+      { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, 1), locked: true, color: NEEDS_COLOR },
+      ...treemapCats.map((cat, i) => ({
+        id: cat.id, label: cat.label,
+        value: Math.max(cat.monthly || 0, 1),
+        color: CAT_COLORS[i % CAT_COLORS.length],
+        locked: false, custom: cat.custom, kind: cat.kind,
+      })),
+    ]);
+  };
 
   const confirmEdit = useCallback(() => {
     const val = parseFloat(editingAmount);
@@ -1029,6 +1107,97 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
     setEditingTile(null);
     setEditingAmt("");
   }, [editingTile, editingAmount, onCatAmountChange]);
+
+  // Pinch-to-resize on lifestyle band
+  const getTileAtPos = (x, y) => {
+    for (const rect of lifestyleRects) {
+      if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
+        const tile = lifestyleBandTiles.find(t => t.id === rect.id);
+        if (tile && !tile.locked && tile.id !== "unallocated") return rect.id;
+      }
+    }
+    return null;
+  };
+
+  const handleBandPointerDown = (e) => {
+    const bandRect = e.currentTarget.getBoundingClientRect();
+    const tileId = getTileAtPos(e.clientX - bandRect.left, e.clientY - bandRect.top);
+    if (!tileId) return;
+    if (!pinchRef.current) {
+      pinchRef.current = { tileId, p1: { id: e.pointerId, x: e.clientX, y: e.clientY }, p2: null };
+    } else if (!pinchRef.current.p2 && pinchRef.current.tileId === tileId) {
+      const { p1 } = pinchRef.current;
+      const dx = e.clientX - p1.x, dy = e.clientY - p1.y;
+      const startDist = Math.sqrt(dx * dx + dy * dy);
+      const startVal = tiles.find(t => t.id === tileId)?.value || 0;
+      pinchRef.current = { tileId, p1, p2: { id: e.pointerId, x: e.clientX, y: e.clientY }, startDist, startVal };
+      pinchActiveRef.current = true;
+    }
+  };
+
+  const handleBandPointerMove = (e) => {
+    if (!pinchRef.current?.p2) return;
+    const p = pinchRef.current;
+    let x1 = p.p1.x, y1 = p.p1.y, x2 = p.p2.x, y2 = p.p2.y;
+    if (e.pointerId === p.p1.id) { x1 = e.clientX; y1 = e.clientY; pinchRef.current = { ...p, p1: { ...p.p1, x: x1, y: y1 } }; }
+    if (e.pointerId === p.p2.id) { x2 = e.clientX; y2 = e.clientY; pinchRef.current = { ...p, p2: { ...p.p2, x: x2, y: y2 } }; }
+    const curDist = Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+    const newVal = Math.max(0, p.startVal + (curDist - p.startDist) * 5);
+    setTiles(prev => prev.map(t => t.id === p.tileId ? { ...t, value: newVal } : t));
+  };
+
+  const handleBandPointerUp = (e) => {
+    if (!pinchRef.current) return;
+    const p = pinchRef.current;
+    if (e.pointerId === p.p1.id || (p.p2 && e.pointerId === p.p2.id)) {
+      if (p.p2) {
+        const tileId = p.tileId;
+        setTiles(prev => prev.map(t =>
+          t.id === tileId ? { ...t, value: Math.max(25, Math.round(t.value / 25) * 25) } : t
+        ));
+      }
+      pinchRef.current = null;
+      setTimeout(() => { pinchActiveRef.current = false; }, 50);
+    }
+  };
+
+  // "Get your analysis" — fetch summary then navigate
+  const handleAnalysisClick = async () => {
+    if (analyzing) return;
+    const authorized = onRequestAnalysis();
+    if (!authorized) return;
+    setAnalyzing(true);
+    setAnalyzeError(false);
+    const summaryText = await generateSummary({
+      property: {
+        address: property.address, price: property.price, beds: property.beds, baths: property.baths,
+        sqft: property.sqft, yearBuilt: property.yearBuilt, lotSize: property.lotSize,
+        propertyType: property.propertyType, daysOnMarket: property.daysOnMarket,
+        city: property.city, state: property.state, zipCode: property.zipCode,
+      },
+      monthlyHousing: housingTile?.value || 0,
+      income: inc,
+      essentialsTotal: profile.essentialsTotal,
+      housingPct,
+      verdict,
+      cats: profile.cats.map(c => ({ label: c.label, kind: c.kind, monthly: c.monthly || null, propertyNeed: c.propertyNeed || null })),
+      lifestyleBudget,
+      lifestyleTotal: lifestyleTiles.reduce((s, t) => s + t.value, 0),
+      downPct,
+      rate,
+    });
+    if (!summaryText) {
+      setAnalyzeError(true);
+      setAnalyzing(false);
+      return;
+    }
+    // Persist adjusted tile values to profile before navigating
+    lifestyleTiles.forEach(tile => {
+      if (onCatAmountChange) onCatAmountChange(tile.id, Math.round(tile.value / 25) * 25);
+    });
+    setAnalyzing(false);
+    onGetAnalysis({ tiles, verdict, housingPct, rate, downPct, summary: summaryText });
+  };
 
   const streetViewUrl = `/api/streetview?address=${encodeURIComponent(property.address)}`;
 
@@ -1187,25 +1356,16 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
         </div>
       </div>
 
-      {/* Verdict headline — above treemap (suppressed until tiles are ready) */}
-      {housingTile && <div style={{
-        flexShrink: 0,
-        background: `${verdict.color}18`,
-        border: `1.5px solid ${verdict.color}44`,
-        borderRadius: 6,
-        padding: "8px 12px",
-        display: "flex", alignItems: "center", gap: 10,
-      }}>
-        <div style={{ flexShrink: 0, background: verdict.color, borderRadius: 3, padding: "4px 10px" }}>
-          <div style={{ fontSize: 9, fontWeight: "800", color: CREAM, letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-            {verdict.label}
-          </div>
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 12, fontWeight: "700", color: INK, letterSpacing: "-0.01em" }}>{verdict.headline}</div>
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{verdict.subline}</div>
-        </div>
-      </div>}
+      {/* Legend */}
+      {housingTile && (
+        <Legend
+          tiles={tiles}
+          income={inc}
+          lifestyleSurplus={lifestyleSurplus}
+          modified={tilesModified}
+          onReset={resetTiles}
+        />
+      )}
 
       {/* Three-Band Treemap */}
       <div
@@ -1228,20 +1388,11 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               width: "100%", height: housingBandH,
               background: HOUSING_COLOR, borderRadius: 6,
               cursor: "pointer", overflow: "hidden",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 14px", boxSizing: "border-box",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
             }}
           >
-            <div style={{ position: "absolute", top: 6, left: 10, fontSize: 8, letterSpacing: "0.18em", color: "rgba(250,245,232,0.52)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>WHERE YOU LIVE</div>
-            <div>
-              <div style={{ fontSize: Math.max(8, Math.min(11, housingBandH / 6)), fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Housing</div>
-              {housingBandH > 58 && (
-                <div style={{ fontSize: 11, color: "rgba(250,245,232,0.5)", marginTop: 2 }}>
-                  ${Math.round(housingTile.value).toLocaleString("en-US")}/mo
-                </div>
-              )}
-            </div>
-            <div style={{ fontSize: 32, fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
+            <CategoryIcon category="housing" size={housingBandH > 80 ? 22 : 16} color={CREAM} />
+            <div style={{ fontSize: 32, fontWeight: "700", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
               {(housingTile.value / inc * 100).toFixed(0)}%
             </div>
           </div>
@@ -1254,17 +1405,12 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               width: "100%", height: essentialsBandH,
               background: NEEDS_COLOR, borderRadius: 4,
               cursor: onEditProfile ? "pointer" : "default", overflow: "hidden",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 12px", boxSizing: "border-box",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}
           >
-            <div style={{ position: "absolute", top: 4, left: 10, fontSize: 8, letterSpacing: "0.18em", color: "rgba(250,245,232,0.52)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>WHAT YOU NEED</div>
-            <div style={{ fontSize: 9, fontWeight: "700", letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Essentials</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 11, color: "rgba(250,245,232,0.5)" }}>${Math.round(needsTile?.value || 0).toLocaleString("en-US")}/mo</div>
-              <div style={{ fontSize: 32, fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
-                {((needsTile?.value || 0) / inc * 100).toFixed(0)}%
-              </div>
+            <CategoryIcon category="needs" size={16} color={CREAM} />
+            <div style={{ fontSize: 28, fontWeight: "700", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
+              {((needsTile?.value || 0) / inc * 100).toFixed(0)}%
             </div>
           </div>
 
@@ -1275,6 +1421,10 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               width: "100%", height: lifestyleBandH,
               borderRadius: 4, overflow: "hidden",
             }}
+            onPointerDown={handleBandPointerDown}
+            onPointerMove={handleBandPointerMove}
+            onPointerUp={handleBandPointerUp}
+            onPointerCancel={handleBandPointerUp}
           >
             {lifestyleBandTiles.length === 0 && (
               <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1290,19 +1440,16 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               if (!tile) return null;
               const isUnalloc = tile.id === "unallocated";
               const pct = (tile.value / inc * 100).toFixed(0);
-              const pad = rect.w < 70 ? 6 : 8;
-              const pctSize   = Math.max(10, Math.min(24, Math.min(rect.w / 3.6, rect.h / 2.6)));
-              const labelSize = Math.max(7, Math.min(9, rect.w / 9));
-              const moSize    = Math.max(6, Math.min(8, rect.w / 9));
-              const showLabel      = rect.w >= 70 && rect.h >= 20;
-              const showPercentage = showLabel && rect.h >= 28;
-              const showDollar     = showLabel && rect.h >= 40;
+              const showContent = rect.w >= 30 && rect.h >= 30;
+              const showPct     = rect.w >= 50 && rect.h >= 45;
+              const iconSize    = Math.min(18, Math.min(rect.w, rect.h) * 0.28);
+              const pctSize     = Math.min(24, Math.min(rect.w / 2.8, rect.h / 2.4));
 
               return (
                 <div
                   key={rect.id}
                   onClick={() => {
-                    if (isUnalloc || tile.locked) return;
+                    if (isUnalloc || tile.locked || pinchActiveRef.current) return;
                     const cat = profile.cats.find(c => c.id === tile.id);
                     setEditingTile(tile.id);
                     setEditingAmt(String(Math.round(cat?.monthly || 0)));
@@ -1319,20 +1466,19 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                     borderRadius: 5,
                     overflow: "hidden",
                     cursor: isUnalloc ? "default" : "pointer",
-                    transition: "width 0.18s ease, height 0.18s ease",
+                    transition: "width 0.12s ease, height 0.12s ease",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
                   }}
                 >
-                  {isUnalloc ? (
-                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, overflow: "hidden" }}>
-                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600", color: "rgba(30,26,14,0.45)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>UNALLOCATED</div>}
-                      {showDollar && <div style={{ fontSize: moSize, color: "rgba(30,26,14,0.35)", marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo · room to grow</div>}
-                    </div>
-                  ) : (
-                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.3)", overflow: "hidden" }}>
-                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>}
-                      {showPercentage && <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{pct}%</div>}
-                      {showDollar && <div style={{ fontSize: moSize, opacity: 0.62, marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo</div>}
-                    </div>
+                  {showContent && (
+                    <CategoryIcon
+                      category={isUnalloc ? "unallocated" : tile.id}
+                      size={Math.max(10, iconSize)}
+                      color={isUnalloc ? "rgba(30,26,14,0.35)" : CREAM}
+                    />
+                  )}
+                  {showPct && !isUnalloc && (
+                    <div style={{ fontSize: Math.max(10, pctSize), fontWeight: "700", color: CREAM, lineHeight: 1 }}>{pct}%</div>
                   )}
                   {!isUnalloc && rect.w >= 80 && rect.h >= 60 && (
                     <div style={{ position: "absolute", bottom: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
@@ -1344,11 +1490,6 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                 </div>
               );
             })}
-
-            {/* HOW YOU LIVE label — when tiles present */}
-            {lifestyleBandTiles.length > 0 && (
-              <div style={{ position: "absolute", top: 6, left: 8, fontSize: 8, letterSpacing: "0.18em", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>HOW YOU LIVE</div>
-            )}
 
             {/* Deficit chip */}
             {lifestyleSurplus < 0 && (
@@ -1419,13 +1560,89 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
             onClick={onBack}
           >← New</button>
           <button
-            style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
-            onClick={() => onShare({ tiles, property, verdict, housingPct, rate, downPct })}
+            style={{ ...btnPrimary(analyzing), background: analyzing ? "#b0aa90" : "#C8412A", flex: 1 }}
+            onClick={handleAnalysisClick}
           >
-            Share This Map ↗{shareCount < 3 ? ` · ${3 - shareCount} free` : ""}
+            {analyzing
+              ? "ANALYZING..."
+              : analyzeError
+              ? "ERROR — RETRY ↗"
+              : `GET YOUR ANALYSIS${shareCount < 3 ? ` · ${3 - shareCount} FREE` : " · UNLOCK"} ↗`}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Screen: Analysis (Reveal) ──────────────────────────────────────────────
+function AnalysisScreen({ property, profile, analysisData, onAdjustAgain, onShare }) {
+  const { tiles, verdict, housingPct, rate, downPct, summary } = analysisData;
+  const inc = profile.income;
+  const housingTile     = tiles.find(t => t.id === "housing");
+  const needsTile       = tiles.find(t => t.id === "needs");
+  const lifestyleTiles  = tiles.filter(t => t.id !== "housing" && t.id !== "needs");
+  const lifestyleBudget = Math.max(inc - (housingTile?.value || 0) - profile.essentialsTotal, 0);
+  const lifestyleTotal  = lifestyleTiles.reduce((s, t) => s + t.value, 0);
+  const lifestyleSurplus = lifestyleBudget - lifestyleTotal;
+  const streetViewUrl   = `/api/streetview?address=${encodeURIComponent(property.address)}`;
+
+  return (
+    <div style={{
+      height: "100%", overflowY: "auto", overscrollBehavior: "contain",
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)",
+      paddingLeft: 14, paddingRight: 14,
+      boxSizing: "border-box",
+    }}>
+    <div style={{ width: "100%", maxWidth: MOBILE_MAX, margin: "0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
+
+      {/* Property card */}
+      <div style={{ borderRadius: 6, overflow: "hidden", position: "relative", height: 100, background: INK, flexShrink: 0 }}>
+        <img src={streetViewUrl} alt={property.address} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(18,16,8,0.95) 0%, transparent 60%)", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "0 14px 10px" }}>
+          <div style={{ fontSize: 13, fontWeight: "700", color: CREAM, letterSpacing: "-0.01em" }}>{property.address}</div>
+          <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 2 }}>
+            {[
+              property.price ? `$${property.price.toLocaleString("en-US")}` : null,
+              (property.beds || property.baths) ? `${property.beds || 0}bd ${property.baths || 0}ba` : null,
+              `$${Math.round(housingTile?.value || 0).toLocaleString("en-US")}/mo`,
+            ].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+      </div>
+
+      {/* Verdict block */}
+      <div style={{ background: verdict.color, borderRadius: 8, padding: "18px 16px", flexShrink: 0 }}>
+        <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(250,245,232,0.65)", textTransform: "uppercase", marginBottom: 4 }}>Your verdict</div>
+        <div style={{ fontSize: 22, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em" }}>{verdict.label}</div>
+        <div style={{ fontSize: 14, fontWeight: "700", color: CREAM, marginTop: 6, lineHeight: 1.2 }}>{verdict.headline}</div>
+        <div style={{ fontSize: 11, color: "rgba(250,245,232,0.8)", marginTop: 4, lineHeight: 1.45 }}>{verdict.subline}</div>
+      </div>
+
+      {/* AI summary */}
+      {summary ? (
+        <div style={{ background: "rgba(252,246,224,0.4)", borderRadius: 8, padding: "14px 16px", flexShrink: 0 }}>
+          <div style={{ fontSize: 12, color: INK, lineHeight: 1.6 }}>{summary}</div>
+        </div>
+      ) : null}
+
+      {/* Read-only legend */}
+      <Legend tiles={tiles} income={inc} lifestyleSurplus={lifestyleSurplus} />
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 10, marginTop: 4, flexShrink: 0 }}>
+        <button
+          style={{ ...btnPrimary(false), background: "transparent", color: INK, border: `1.5px solid rgba(100,90,60,0.3)`, width: "auto", padding: "10px 16px", fontSize: 9 }}
+          onClick={onAdjustAgain}
+        >← Adjust Again</button>
+        <button
+          style={{ ...btnPrimary(false), background: "#C8412A", flex: 1 }}
+          onClick={() => onShare({ tiles, property, verdict, housingPct, rate, downPct, summary })}
+        >Share This ↗</button>
+      </div>
+
+    </div>
     </div>
   );
 }
@@ -2314,7 +2531,7 @@ export default function App() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [shareData, setShareData]         = useState(null);
   const [cachedSummary, setCachedSummary] = useState(null);
-  const [cachedSummaryKey, setCachedSummaryKey] = useState(null);
+  const [analysisData, setAnalysisData]   = useState(null);
 
   const handleOnboarding = (prof) => { setProfile(prof); saveProfile(prof); setScreen("address"); };
 
@@ -2335,20 +2552,26 @@ export default function App() {
     setScreen("map");
   };
 
-  const handleShare = (data) => {
-    const key = JSON.stringify({
-      address: data.property.address,
-      housingPct: data.housingPct.toFixed(1),
-      rate: data.rate,
-      downPct: data.downPct,
-      tiles: data.tiles.map(t => t.id + ":" + Math.round(t.value)),
-    });
-    if (key !== cachedSummaryKey) {
-      if (shareCount >= 3) { setShowPaywall(true); return; }
-      setCachedSummary(null);
-      setCachedSummaryKey(key);
+  const handleRequestAnalysis = () => {
+    const address = property?.address || "";
+    let analyzed = [];
+    try { analyzed = JSON.parse(localStorage.getItem("livable:analyzedProperties:v1") || "[]"); } catch {}
+    const isNew = !analyzed.includes(address);
+    if (isNew) {
+      if (shareCount >= 3) { setShowPaywall(true); return false; }
       setShareCount(c => c + 1);
+      localStorage.setItem("livable:analyzedProperties:v1", JSON.stringify([...analyzed, address]));
     }
+    return true;
+  };
+
+  const handleGetAnalysis = (data) => {
+    setAnalysisData(data);
+    setScreen("analysis");
+  };
+
+  const handleShareFromAnalysis = (data) => {
+    setCachedSummary(data.summary || null);
     setShareData(data);
     setScreen("share");
   };
@@ -2377,8 +2600,9 @@ export default function App() {
       {screen === "welcome"    && <WelcomeScreen onContinue={() => setScreen("onboarding")} />}
       {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
       {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
-      {screen === "map"        && <MapScreen property={property} profile={profile} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} onEditProfile={() => setShowProfileEditor(true)} />}
-      {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
+      {screen === "map"        && <MapScreen property={property} profile={profile} shareCount={shareCount} onBack={() => setScreen("address")} onRequestAnalysis={handleRequestAnalysis} onGetAnalysis={handleGetAnalysis} onCatAmountChange={handleCatAmountChange} onEditProfile={() => setShowProfileEditor(true)} />}
+      {screen === "analysis"   && <AnalysisScreen property={property} profile={profile} analysisData={analysisData} onAdjustAgain={() => setScreen("map")} onShare={handleShareFromAnalysis} />}
+      {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("analysis")} />}
     </div>
   );
 }

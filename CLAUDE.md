@@ -21,8 +21,9 @@ Deployed on Railway. Live at livable.app.
 ## User flow
 1. **Onboarding** — monthly take-home, monthly essentials (savings, healthcare, education, groceries, utilities, transport), down payment %, up to 5 ranked lifestyle priorities
 2. **Address** — property address → Rentcast lookup
-3. **Map** — three-band treemap (Housing / Essentials / Lifestyle). Tap-to-edit lifestyle tiles. Live verdict.
-4. **Share** — Claude AI summary + static SVG treemap + PDF export
+3. **Map (Explore)** — three-band treemap. Tap-to-edit / pinch-to-resize lifestyle tiles. Legend below treemap. "GET YOUR ANALYSIS" CTA.
+4. **Analysis (Reveal)** — verdict headline, AI summary, read-only legend. "Adjust Again" / "Share This" actions.
+5. **Share** — Claude AI summary + static SVG treemap + PDF export
 
 ## Affordability signals
 | Housing % of income | Label |
@@ -103,8 +104,19 @@ Helper functions:
 - `darkenHex(hex, amt)` — darkens a hex color by `amt` per channel
 - `catKindSublabel(cat)` — returns display sub-label string for a cat object
 
-### Tap-only interaction (Round 9 / 9.5)
-Pencil icon (12×12 SVG) in bottom-right corner of unlocked lifestyle tiles where `rect.w ≥ 80 && rect.h ≥ 60`. Below that threshold the tile is still tappable but no icon appears.
+### Tile interaction (Round 10)
+- **Tap** → opens edit popover (unchanged). Suppressed if `pinchActiveRef.current`.
+- **Pinch (two fingers, same tile)** → scales `tile.value` proportionally to pointer distance change, snaps to nearest $25 on release. Implemented via `onPointerDown/Move/Up` on the lifestyle band container; `pinchRef` tracks `{ pointerId1, pointerId2, tileId, startDist, startValue }`; `pinchActiveRef` gates tap suppression.
+- Pencil icon (12×12) appears on tiles `w ≥ 80 && h ≥ 60`.
+
+## Legend component (Round 10)
+`Legend({ tiles, income, lifestyleSurplus, modified, onReset })` — renders all tiles as icon/label/$/% rows. Housing + Essentials appear first, then lifestyle cats, then an Unallocated row if `lifestyleSurplus > 0`. "Reset" link appears top-right when `modified && onReset`. Used in MapScreen (with reset) and AnalysisScreen (read-only).
+
+## CategoryIcon component (Round 10)
+`CategoryIcon({ category, size, color })` — maps cat IDs to Lucide icons via `CATEGORY_ICON_MAP`. Fallback: `Sparkles`. Requires `lucide-react` package.
+
+## Analysis look tracking (Round 10)
+localStorage key `livable:analyzedProperties:v1` holds a JSON array of property addresses that have been analyzed. `handleRequestAnalysis()` checks if the current address is in that list — if so, analysis is free (re-analysis doesn't consume a look). If new, increments `shareCount` and adds address to the list. `shareCount >= 3` triggers paywall.
 
 ## Three-band treemap (Round 9.2)
 
@@ -200,3 +212,4 @@ Each tier has `label`, `color`, `headline` (short), `subline` (housingPct-interp
 - [x] Round 9.2: Three-band treemap (Housing/Essentials/Lifestyle); computeBandRects for lifestyle band; band height clamps (housing 30-55%, essentials 15%, lifestyle remainder); unallocated tile when lifestyle underspent; deficit chip when overspent; band labels WHERE YOU LIVE/WHAT YOU NEED/HOW YOU LIVE; verdict sublines use lifestyle-budget dollars; AI summary receives lifestyleBudget+lifestyleTotal; WelcomeScreen subhead echoes three-band framing; Essentials band taps to profile editor; FIXED badges removed; onEditProfile prop threaded to MapScreen.
 - [x] Round 9.3: PDF font — Jost registered via Font.register() from @fontsource/jost on jsDelivr CDN; fontFamily:"Jost" applied to all PDF SVG Text elements. PDF + live treemap min-size thresholds: showLabel (w≥50 && h≥20), showPercentage (showLabel && h≥28), showDollar (showLabel && h≥40); tiles below threshold render as solid colored regions with no text.
 - [x] Round 9.5: Band header labels render once per band at band level (not inside tiles), zIndex:2, fontSize:8, consistent color; Housing/Essentials pct standardized to fontSize:32 with dollar at fontSize:11; F/L/P dimension bars removed from verdict box (scoring still drives label/color/subline); live tile showLabel threshold raised to w≥70 for narrow-tile legibility; pencil icon threshold raised to w≥80 && h≥60, size 12px; tile label marginBottom:3 for breathing room.
+- [x] Round 10: Explore→Analyze→Share flow. MapScreen restructured as pure exploration surface: verdict box removed, Legend component added (icon/label/$/% rows, Reset link when tiles modified), treemap tiles simplified to icon+pct only, pinch-to-resize on lifestyle band (two-pointer gesture scales tile monthly, snaps to $25), muted CAT_COLORS, Lucide icons via CategoryIcon component, "GET YOUR ANALYSIS" CTA. AnalysisScreen added (verdict header, AI summary, read-only Legend, Adjust Again / Share This). App root: handleRequestAnalysis (checks livable:analyzedProperties:v1 localStorage — re-analyzing same property doesn't consume a look), handleGetAnalysis, handleShareFromAnalysis. Screen routing: map→analysis→share; ShareScreen onClose returns to "analysis".
