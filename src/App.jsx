@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Building2, Wrench, Plane, Dumbbell, Users, Music, UtensilsCrossed, Heart, Tv, PawPrint, Sparkles } from "lucide-react";
+import { Building2, Wrench, Plane, Dumbbell, Users, Music, UtensilsCrossed, Heart, Tv, PawPrint, Shirt, Sparkles } from "lucide-react";
+import "@fontsource/jost/400.css";
+import "@fontsource/jost/700.css";
 
 // ── localStorage helpers ───────────────────────────────────────────────────
 const STORAGE_KEY = "livable:profile:v1";
@@ -316,10 +318,15 @@ async function generateSummary(data) {
 const CATEGORY_ICON_MAP = {
   travel: Plane, fitness: Dumbbell, social: Users, hobbies: Music,
   dining: UtensilsCrossed, giving: Heart, subscriptions: Tv, pets: PawPrint,
+  style: Shirt,
   housing: Building2, needs: Wrench, unallocated: Sparkles,
 };
 function CategoryIcon({ category, size = 20, color = INK }) {
-  const Icon = CATEGORY_ICON_MAP[category] || Sparkles;
+  const Icon = CATEGORY_ICON_MAP[category];
+  if (!Icon) {
+    if (process.env.NODE_ENV !== "production") console.warn(`[CategoryIcon] no icon mapped for category: "${category}"`);
+    return <Sparkles size={size} color={color} strokeWidth={1.75} />;
+  }
   return <Icon size={size} color={color} strokeWidth={1.75} />;
 }
 
@@ -365,7 +372,7 @@ function Legend({ tiles, income, lifestyleSurplus, modified, onReset }) {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Shared styles ──────────────────────────────────────────────────────────
-const font = "'Futura','Century Gothic','Trebuchet MS',sans-serif";
+const font = "'Jost','Futura','Century Gothic','Trebuchet MS',sans-serif";
 const inputStyle = {
   width: "100%", boxSizing: "border-box",
   background: "rgba(255,255,255,0.5)",
@@ -1395,6 +1402,11 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
             <div style={{ fontSize: 32, fontWeight: "700", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
               {(housingTile.value / inc * 100).toFixed(0)}%
             </div>
+            {housingBandH >= 90 && (
+              <div style={{ fontSize: 11, color: "rgba(250,245,232,0.55)", lineHeight: 1 }}>
+                ${Math.round(housingTile.value).toLocaleString("en-US")}/mo
+              </div>
+            )}
           </div>
 
           {/* ── ESSENTIALS BAND — WHAT YOU NEED ── */}
@@ -1412,6 +1424,11 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
             <div style={{ fontSize: 28, fontWeight: "700", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
               {((needsTile?.value || 0) / inc * 100).toFixed(0)}%
             </div>
+            {essentialsBandH >= 50 && (
+              <div style={{ fontSize: 10, color: "rgba(250,245,232,0.55)", lineHeight: 1 }}>
+                ${Math.round(needsTile?.value || 0).toLocaleString("en-US")}/mo
+              </div>
+            )}
           </div>
 
           {/* ── LIFESTYLE BAND — HOW YOU LIVE ── */}
@@ -1440,10 +1457,12 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
               if (!tile) return null;
               const isUnalloc = tile.id === "unallocated";
               const pct = (tile.value / inc * 100).toFixed(0);
-              const showContent = rect.w >= 30 && rect.h >= 30;
-              const showPct     = rect.w >= 50 && rect.h >= 45;
-              const iconSize    = Math.min(18, Math.min(rect.w, rect.h) * 0.28);
-              const pctSize     = Math.min(24, Math.min(rect.w / 2.8, rect.h / 2.4));
+
+              const showLabel  = !isUnalloc && rect.w >= 60 && rect.h >= 40;
+              const showPct    = rect.w >= 40 && rect.h >= 30;
+              const showDollar = !isUnalloc && rect.w >= 80 && rect.h >= 60;
+              const showCorner = rect.w >= 80 && rect.h >= 60; // icon + pencil corner
+              const pctSize = Math.min(28, Math.max(11, Math.min(rect.w / 2.5, rect.h / 2.0)));
 
               return (
                 <div
@@ -1467,20 +1486,28 @@ function MapScreen({ property, profile, shareCount, onBack, onRequestAnalysis, o
                     overflow: "hidden",
                     cursor: isUnalloc ? "default" : "pointer",
                     transition: "width 0.12s ease, height 0.12s ease",
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
                   }}
                 >
-                  {showContent && (
-                    <CategoryIcon
-                      category={isUnalloc ? "unallocated" : tile.id}
-                      size={Math.max(10, iconSize)}
-                      color={isUnalloc ? "rgba(30,26,14,0.35)" : CREAM}
-                    />
+                  {showLabel && (
+                    <div style={{ fontSize: 8, fontWeight: "700", color: "rgba(250,245,232,0.72)", letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1 }}>
+                      {tile.label}
+                    </div>
                   )}
                   {showPct && !isUnalloc && (
-                    <div style={{ fontSize: Math.max(10, pctSize), fontWeight: "700", color: CREAM, lineHeight: 1 }}>{pct}%</div>
+                    <div style={{ fontSize: pctSize, fontWeight: "800", color: CREAM, lineHeight: 1 }}>{pct}%</div>
                   )}
-                  {!isUnalloc && rect.w >= 80 && rect.h >= 60 && (
+                  {showDollar && (
+                    <div style={{ fontSize: 9, color: "rgba(250,245,232,0.55)", lineHeight: 1 }}>
+                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
+                    </div>
+                  )}
+                  {showCorner && !isUnalloc && (
+                    <div style={{ position: "absolute", top: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
+                      <CategoryIcon category={tile.id} size={12} color={CREAM} />
+                    </div>
+                  )}
+                  {showCorner && !isUnalloc && (
                     <div style={{ position: "absolute", bottom: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
