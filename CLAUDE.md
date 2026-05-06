@@ -21,7 +21,7 @@ Deployed on Railway. Live at livable.app.
 ## User flow
 1. **Onboarding** — monthly take-home, monthly essentials (savings, healthcare, education, groceries, utilities, transport), down payment %, up to 5 ranked lifestyle priorities
 2. **Address** — property address → Rentcast lookup
-3. **Map** — interactive treemap (housing vs. lifestyle). Draggable edges. Live affordability signal.
+3. **Map** — three-band treemap (Housing / Essentials / Lifestyle). Tap-to-edit lifestyle tiles. Live verdict.
 4. **Share** — Claude AI summary + static SVG treemap + PDF export
 
 ## Affordability signals
@@ -37,7 +37,7 @@ Deployed on Railway. Live at livable.app.
 
 ## Backend routes (`server.js`)
 - `GET /api/property?address=...` → Rentcast lookup → `{ address, price, beds, baths, sqft, yearBuilt, lotSize?, propertyType?, daysOnMarket?, listedDate?, county?, city?, state?, zipCode?, latitude?, longitude? }` — optional fields omitted if Rentcast doesn't return them.
-- `POST /api/summary` → body `{ property: { address, price, beds, baths, sqft, yearBuilt, lotSize?, propertyType?, daysOnMarket?, city?, state?, zipCode? }, monthlyHousing, income, essentialsTotal, housingPct, signal, cats, downPct, rate }` — Claude generates ONE paragraph (60-90 words) → `{ text, summary }`. Backwards-compatible: old flat-field requests still work. `cats` is array of `{ label, kind, monthly, propertyNeed }`.
+- `POST /api/summary` → body `{ property: {...}, monthlyHousing, income, essentialsTotal, housingPct, verdict, cats, lifestyleBudget, lifestyleTotal, downPct, rate }` — Claude generates ONE paragraph (60-90 words) → `{ text, summary }`. Backwards-compatible. `cats` is `{ label, kind, monthly, propertyNeed }[]`. `lifestyleBudget` = income − housing − essentials; `lifestyleTotal` = sum of recurring+savings cat monthlies.
 - `GET /api/streetview?address=...` → proxies Google Street View Static API image bytes
 
 ## Anthropic model
@@ -103,9 +103,26 @@ Helper functions:
 - `darkenHex(hex, amt)` — darkens a hex color by `amt` per channel
 - `catKindSublabel(cat)` — returns display sub-label string for a cat object
 
+## Three-band treemap (Round 9.2)
+
+The treemap renders three vertically-stacked bands inside a single `position: relative` container:
+
+| Band | Height | Color | Tap |
+|---|---|---|---|
+| Housing | `clamp(30%, housingPct, 55%)` of container H | `HOUSING_COLOR` | Opens assumptions drawer |
+| Essentials | fixed 15% of container H | `NEEDS_COLOR` | Opens profile editor |
+| Lifestyle | remaining H | per-cat colors | Opens tile edit popover |
+
+- `computeBandRects(tiles, W, H, gap)` — full-width row layout (3-per-row), no housing-left pin. Used for lifestyle band tiles.
+- Unallocated tile: `lifestyleSurplus > 0` → muted striped tile fills remainder of lifestyle band. Inert.
+- Deficit chip: `lifestyleSurplus < 0` → coral chip overlay on lifestyle band saying "Over by $X/mo".
+- Band labels: "WHERE YOU LIVE" / "WHAT YOU NEED" / "HOW YOU LIVE" as tiny low-opacity text in top-left corner of each band.
+- No FIXED badges. Band structure makes lockedness implicit.
+- `lifestyleBudget = income − housingMonthly − essentialsTotal`; `lifestyleTotal = sum of recurring+savings cat monthlies`.
+
 ## Key implementation notes
-- Treemap layout: housing tile pinned left, lifestyle tiles grid 3-per-row on right
-- Edge drag: `dragRef` holds drag state; RAF-throttled `moveEdge`; proportional value transfer
+- Treemap: three-band vertical layout (Housing / Essentials / Lifestyle). See Three-band treemap section above.
+- Edge drag removed (Round 9)
 - Scroll lock: treemap container blocks `touchmove`/`wheel`/gesture events only (not touchstart/touchend — those would break taps)
 - AI summary caching: keyed on address + housingPct + rate + downPct + tile values; cached in `cachedSummary` state
 - `nonTreemapCats` computed in MapScreen as `profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings")`
@@ -176,3 +193,5 @@ Each tier has `label`, `color`, `headline` (short), `subline` (housingPct-interp
 - [x] Round 7: richer property data (lotSize, propertyType, daysOnMarket, city/state/zip, lat/lng); property context helpers (describePropertyType, describeLot, describeAge, describeMarketTime, buildPropertyContext); three-dimensional AI cross-examination (financial + lifestyle + property fit); word count 60-90; photo card meta includes lot size; Just listed / 90+ days badges; /api/summary accepts nested property object with flat-field backwards compat. Lat/lng and MLS info passed to AI but never surfaced in UI.
 - [x] Round 8: computeVerdict (scoreFinancial/scoreLifestyle/scoreProperty weighted 45/30/25); five verdict tiers; verdict headline above treemap (suppressed until housingTile ready); ShareScreen verdict-led header; SVG savings stripe via defs/pattern; toLocaleString("en-US") throughout; beds/baths null guards in ShareScreen and PDF meta; computeRects guard for missing housing tile.
 - [x] Round 9: WelcomeScreen for cold-start users (slogan "Make your dream home doable"); routing welcome→onboarding→address; returning users skip welcome; slogan in HTML meta/og/twitter tags; single source of truth — profile.cats[].monthly drives tiles, no min(1) floor, 0-value cats excluded from treemap; tile editing persists to localStorage immediately; breakdown table filters $0 tiles; edge-drag interaction removed (tap-only); pencil icon affordance on lifestyle tiles ≥60×60; property card height 130px; treemap flex:1 without maxHeight cap; PDF treemap 480×280 (was 110px tall); PDF SVG text uses PDF_CREAM fill (fixes blue text); PDF breakdown filters $0 tiles; PDF tagline updated to slogan.
+- [x] Round 9.1: restored lifestyle tiles (monthly>0 filter removed; Math.max(...,1) floor restored); Anthropic model updated to claude-sonnet-4-6 (dated snapshot deprecated); PDF SVG Text fontFamily:Helvetica-Bold replaced with fontWeight:bold (react-pdf SVG font crash); MapScreen outer wrapper uses flex:1+minHeight:0 (iOS height:100% unreliable in flex).
+- [x] Round 9.2: Three-band treemap (Housing/Essentials/Lifestyle); computeBandRects for lifestyle band; band height clamps (housing 30-55%, essentials 15%, lifestyle remainder); unallocated tile when lifestyle underspent; deficit chip when overspent; band labels WHERE YOU LIVE/WHAT YOU NEED/HOW YOU LIVE; verdict sublines use lifestyle-budget dollars; AI summary receives lifestyleBudget+lifestyleTotal; WelcomeScreen subhead echoes three-band framing; Essentials band taps to profile editor; FIXED badges removed; onEditProfile prop threaded to MapScreen.

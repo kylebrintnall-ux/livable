@@ -101,7 +101,7 @@ function buildPropertyContext(property) {
 }
 
 // ── Build summary prompt — three-dimensional cross-examination ─────────────
-function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, verdict, signal, cats, downPct, rate }) {
+function buildSummaryPrompt({ property, monthlyHousing, income, essentialsTotal, housingPct, verdict, signal, cats, lifestyleBudget, lifestyleTotal, downPct, rate }) {
   const recurring     = (cats || []).filter(c => c.kind === "recurring");
   const savings       = (cats || []).filter(c => c.kind === "savings");
   const propertyNeeds = (cats || []).filter(c => c.kind === "property");
@@ -134,6 +134,9 @@ USER'S FINANCIAL REALITY:
 Monthly take-home: $${Number(income).toLocaleString("en-US")}
 Monthly essentials (savings, healthcare, education, groceries, utilities, transport): $${Math.round(essentialsTotal || 0).toLocaleString("en-US")}
 This house takes ${Number(housingPct).toFixed(0)}% of their take-home pay.
+Lifestyle budget (income after housing and essentials): $${Math.round(lifestyleBudget || 0).toLocaleString("en-US")}/mo
+Total lifestyle commitments stated: $${Math.round(lifestyleTotal || 0).toLocaleString("en-US")}/mo
+Lifestyle headroom: $${Math.round((lifestyleBudget || 0) - (lifestyleTotal || 0)).toLocaleString("en-US")}/mo (positive = room to spare, negative = the math doesn't fit)
 Verdict: ${verdict?.label || signal?.label || "Unknown"} (financial fit ${verdict?.financial ?? "??"}/100, lifestyle fit ${verdict?.lifestyle ?? "??"}/100, property fit ${verdict?.property ?? "??"}/100).
 
 USER'S LIFESTYLE COMMITMENTS, BY KIND:

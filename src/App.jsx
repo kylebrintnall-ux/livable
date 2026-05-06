@@ -165,27 +165,31 @@ function computeVerdict({ tiles, profile, property, housingPct }) {
   const propertyScore = scoreProperty(property, profile);
   const score         = integrateVerdict({ financial, lifestyle, property: propertyScore });
 
+  const housingVal      = tiles.find(t => t.id === "housing")?.value || 0;
+  const lifestyleBudget = Math.max(profile.income - housingVal - profile.essentialsTotal, 0);
+  const lbStr           = `$${Math.round(lifestyleBudget).toLocaleString("en-US")}`;
+
   let label, color, headline, subline;
   if (score >= 80) {
-    label = "Fits Your Life";   color = "#4A9B6F";
+    label = "Fits Your Life";    color = "#4A9B6F";
     headline = "This home works.";
-    subline  = `Housing takes ${housingPct.toFixed(0)}% — your lifestyle budget stays healthy.`;
+    subline  = "Healthy lifestyle budget — room for what matters to you.";
   } else if (score >= 65) {
-    label = "Mostly Fits";      color = "#6FA876";
+    label = "Mostly Fits";       color = "#6FA876";
     headline = "Close, with trade-offs.";
-    subline  = `At ${housingPct.toFixed(0)}%, this mostly works — a few things to watch.`;
+    subline  = "Healthy lifestyle budget — room for what matters to you.";
   } else if (score >= 50) {
-    label = "Real Trade-Off";   color = "#E8A030";
+    label = "Real Trade-Off";    color = "#E8A030";
     headline = "Something gives.";
-    subline  = `Housing at ${housingPct.toFixed(0)}% reshapes your lifestyle. Tap tiles to adjust.`;
+    subline  = "Tight on lifestyle — your priorities and the math will compete.";
   } else if (score >= 35) {
-    label = "Stretched";        color = "#D97B3A";
+    label = "Stretched";         color = "#D97B3A";
     headline = "Stretched thin.";
-    subline  = `At ${housingPct.toFixed(0)}%, this works against several of your priorities.`;
+    subline  = `At ${housingPct.toFixed(0)}% housing, only ${lbStr}/mo left for how you want to live.`;
   } else {
     label = "Works Against You"; color = "#C8412A";
     headline = "Hard to make work.";
-    subline  = `Housing eats ${housingPct.toFixed(0)}% of income — something major has to give.`;
+    subline  = `At ${housingPct.toFixed(0)}% housing, only ${lbStr}/mo left for how you want to live.`;
   }
   return { label, color, headline, subline, score, financial, lifestyle, property: propertyScore };
 }
@@ -220,6 +224,33 @@ function computeRects(tiles, W, H, gap) {
       rx += w + g;
     });
     ry += rowH + g;
+  });
+  return rects;
+}
+
+// Full-width row layout for lifestyle band (no housing-left pin)
+function computeBandRects(tiles, W, H, gap) {
+  if (!tiles.length) return [];
+  const total = tiles.reduce((s, t) => s + t.value, 0);
+  if (total === 0) return [];
+  const ROW_SIZE = 3;
+  const rows = [];
+  for (let i = 0; i < tiles.length; i += ROW_SIZE) rows.push(tiles.slice(i, i + ROW_SIZE));
+  const rowTotals = rows.map(r => r.reduce((s, t) => s + t.value, 0));
+  const grandTotal = rowTotals.reduce((s, v) => s + v, 0);
+  const rects = [];
+  let ry = 0;
+  rows.forEach((row, ri) => {
+    const rowH = Math.max(0, (rowTotals[ri] / grandTotal) * (H - (rows.length - 1) * gap));
+    let rx = 0;
+    row.forEach((tile, ti) => {
+      const w = ti === row.length - 1
+        ? W - rx
+        : (tile.value / rowTotals[ri]) * (W - (row.length - 1) * gap);
+      rects.push({ id: tile.id, x: rx, y: ry, w: Math.max(0, w), h: rowH });
+      rx += Math.max(0, w) + gap;
+    });
+    ry += rowH + gap;
   });
   return rects;
 }
@@ -321,8 +352,11 @@ function WelcomeScreen({ onContinue }) {
         <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 72 }}>
           HOME · BUDGET · LIFE
         </div>
-        <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.02em", lineHeight: 1.1, textAlign: "center", marginBottom: 72 }}>
+        <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.02em", lineHeight: 1.1, textAlign: "center", marginBottom: 16 }}>
           Make your dream<br />home doable.
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, letterSpacing: "0.04em", textAlign: "center", lineHeight: 1.5, marginBottom: 56 }}>
+          Where you want to live · what you need to live · how you want to live.
         </div>
         <button
           onClick={onContinue}
@@ -897,7 +931,7 @@ function PaywallOverlay({ onClose }) {
 }
 
 // ── Screen: Map ────────────────────────────────────────────────────────────
-function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmountChange }) {
+function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmountChange, onEditProfile }) {
   const [rate, setRate]       = useState(CURRENT_RATE);
   const [downPct, setDownPct] = useState(profile.downPct);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -960,11 +994,31 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
     };
   }, []);
 
-  const nonTreemapCats = profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings");
-  const housingTile = tiles.find(t => t.id === "housing");
-  const housingPct  = housingTile ? (housingTile.value / inc) * 100 : 0;
-  const verdict     = computeVerdict({ tiles, profile, property, housingPct });
-  const rects       = computeRects(tiles.filter(t => t.value > 0), dims.w, dims.h, GAP);
+  const nonTreemapCats  = profile.cats.filter(c => c.kind !== "recurring" && c.kind !== "savings");
+  const housingTile     = tiles.find(t => t.id === "housing");
+  const needsTile       = tiles.find(t => t.id === "needs");
+  const lifestyleTiles  = tiles.filter(t => t.id !== "housing" && t.id !== "needs");
+  const housingPct      = housingTile ? (housingTile.value / inc) * 100 : 0;
+  const verdict         = computeVerdict({ tiles, profile, property, housingPct });
+
+  const lifestyleTotal  = profile.cats
+    .filter(c => c.kind === "recurring" || c.kind === "savings")
+    .reduce((s, c) => s + (c.monthly || 0), 0);
+  const lifestyleBudget = Math.max(inc - (housingTile?.value || 0) - profile.essentialsTotal, 0);
+  const lifestyleSurplus = lifestyleBudget - lifestyleTotal;
+
+  const BAND_GAP = 2;
+  const housingBandH    = housingTile
+    ? Math.round(Math.max(dims.h * 0.30, Math.min(dims.h * 0.55, dims.h * housingPct / 100)))
+    : Math.round(dims.h * 0.40);
+  const essentialsBandH = Math.round(dims.h * 0.15);
+  const lifestyleBandH  = Math.max(0, dims.h - housingBandH - essentialsBandH - BAND_GAP * 2);
+
+  const unallocatedTile = lifestyleSurplus > 0
+    ? [{ id: "unallocated", label: "Unallocated", value: lifestyleSurplus, color: "#b5ad98", locked: true, kind: "unallocated" }]
+    : [];
+  const lifestyleBandTiles = [...lifestyleTiles, ...unallocatedTile].filter(t => t.value > 0);
+  const lifestyleRects  = computeBandRects(lifestyleBandTiles, dims.w, lifestyleBandH, GAP);
 
   const confirmEdit = useCallback(() => {
     const val = parseFloat(editingAmount);
@@ -1167,146 +1221,184 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
         </div>
       </div>}
 
-      {/* Treemap */}
+      {/* Three-Band Treemap */}
       <div
         ref={containerRef}
         style={{
           flex: "1 1 auto",
-          position: "relative", borderRadius: 4,
+          position: "relative", borderRadius: 6,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
           touchAction: "none", overscrollBehavior: "none",
         }}
       >
-        {rects.map(rect => {
-          const tile = tiles.find(t => t.id === rect.id);
-          if (!tile) return null;
-          const pct = (tile.value / inc) * 100;
-          const pad = rect.w < 50 ? 5 : 10;
+        {housingTile && <>
 
-          const catDef = CATS.find(c => c.id === tile.id);
-          const availW = rect.w - pad * 2 - 4;
-          const fullFits    = (tile.label.length * 6.0) <= availW;
-          const shortLabel  = catDef?.shortLabel || tile.label;
-          const shortFits   = (shortLabel.length * 6.0) <= availW;
-          const displayLabel = fullFits ? tile.label : shortLabel;
-          const horizontalFits = fullFits || shortFits;
-          const useVertical = !horizontalFits && rect.h > 60;
-
-          const pctSize  = Math.max(10, Math.min(28, Math.min(rect.w / 3.8, rect.h / 3.2)));
-          const moSize   = Math.max(6, Math.min(10, rect.w / 9));
-          const showMo   = !useVertical && rect.h > (12 + pctSize + moSize + 18);
-          const labelSize = Math.max(7, Math.min(10, rect.w / 9));
-          const vMoSize  = Math.max(6, Math.min(8, rect.w / 6));
-
-          return (
-            <div
-              key={rect.id}
-              onClick={() => { if (!tile.locked) { setEditingTile(tile.id); setEditingAmt(String(Math.round(tile.value))); } }}
-              style={{
-                position: "absolute",
-                left: rect.x, top: rect.y,
-                width: Math.max(0, rect.w), height: Math.max(0, rect.h),
-                background: tile.kind === "savings"
-                  ? `repeating-linear-gradient(45deg, ${tile.color}, ${tile.color} 6px, ${darkenHex(tile.color, 25)} 6px, ${darkenHex(tile.color, 25)} 12px)`
-                  : tile.color,
-                borderRadius: 8,
-                transition: "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
-                overflow: "hidden", touchAction: "none",
-                cursor: tile.locked ? "default" : "pointer",
-              }}
-            >
-              {tile.locked && rect.w > 60 && (
-                <div style={{ position: "absolute", top: 5, right: 7, fontSize: 7, letterSpacing: "0.12em", color: "rgba(252,246,224,0.45)", textTransform: "uppercase" }}>FIXED</div>
-              )}
-
-              {useVertical ? (
-                // Vertical: label LEFT (upward), pct+dollar RIGHT
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "row", padding: `${pad}px` }}>
-                  <div style={{
-                    writingMode: "vertical-rl",
-                    transform: "rotate(180deg)",
-                    fontSize: Math.max(7, Math.min(9, rect.w / 5)),
-                    fontWeight: "700",
-                    letterSpacing: "0.06em", textTransform: "uppercase",
-                    color: "rgba(252,246,224,0.75)",
-                    overflow: "hidden", marginRight: 3, flexShrink: 0,
-                    textShadow: "0 1px 3px rgba(0,0,0,0.35)",
-                    alignSelf: "flex-start",
-                  }}>
-                    {displayLabel}
-                  </div>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center" }}>
-                    <div style={{ fontSize: Math.max(9, Math.min(18, rect.w / 3.5)), fontWeight: "800", color: "rgba(252,246,224,0.96)", lineHeight: 1, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
-                      {pct.toFixed(0)}%
-                    </div>
-                    <div style={{ fontSize: vMoSize, color: "rgba(252,246,224,0.6)", marginTop: 2, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
-                    </div>
-                  </div>
+          {/* ── HOUSING BAND — WHERE YOU LIVE ── */}
+          <div
+            onClick={() => setShowAssumptions(true)}
+            style={{
+              position: "absolute", left: 0, top: 0,
+              width: "100%", height: housingBandH,
+              background: HOUSING_COLOR, borderRadius: 6,
+              cursor: "pointer", overflow: "hidden",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "0 14px", boxSizing: "border-box",
+            }}
+          >
+            <div style={{ position: "absolute", top: 4, left: 10, fontSize: 6, letterSpacing: "0.22em", color: "rgba(250,245,232,0.38)", textTransform: "uppercase", pointerEvents: "none" }}>WHERE YOU LIVE</div>
+            <div>
+              <div style={{ fontSize: Math.max(8, Math.min(11, housingBandH / 6)), fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Housing</div>
+              {housingBandH > 58 && (
+                <div style={{ fontSize: Math.max(9, Math.min(12, housingBandH / 6)), color: "rgba(250,245,232,0.5)", marginTop: 2 }}>
+                  ${Math.round(housingTile.value).toLocaleString("en-US")}/mo
                 </div>
-              ) : horizontalFits ? (
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)", overflow: "hidden" }}>
-                  <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>
-                    {displayLabel}
-                  </div>
-                  <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
-                    {pct.toFixed(0)}%
-                  </div>
-                  {showMo && (
-                    <div style={{ fontSize: moSize, opacity: 0.65, marginTop: 3, whiteSpace: "nowrap" }}>
-                      ${Math.round(tile.value).toLocaleString("en-US")}/mo
+              )}
+            </div>
+            <div style={{ fontSize: Math.max(20, Math.min(42, housingBandH * 0.52)), fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
+              {(housingTile.value / inc * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          {/* ── ESSENTIALS BAND — WHAT YOU NEED ── */}
+          <div
+            onClick={onEditProfile}
+            style={{
+              position: "absolute", left: 0, top: housingBandH + BAND_GAP,
+              width: "100%", height: essentialsBandH,
+              background: NEEDS_COLOR, borderRadius: 4,
+              cursor: onEditProfile ? "pointer" : "default", overflow: "hidden",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "0 12px", boxSizing: "border-box",
+            }}
+          >
+            <div style={{ position: "absolute", top: 3, left: 10, fontSize: 6, letterSpacing: "0.22em", color: "rgba(250,245,232,0.32)", textTransform: "uppercase", pointerEvents: "none" }}>WHAT YOU NEED</div>
+            <div style={{ fontSize: 9, fontWeight: "700", letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Essentials</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)" }}>${Math.round(needsTile?.value || 0).toLocaleString("en-US")}/mo</div>
+              <div style={{ fontSize: 16, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em" }}>
+                {((needsTile?.value || 0) / inc * 100).toFixed(0)}%
+              </div>
+            </div>
+          </div>
+
+          {/* ── LIFESTYLE BAND — HOW YOU LIVE ── */}
+          <div
+            style={{
+              position: "absolute", left: 0, top: housingBandH + essentialsBandH + BAND_GAP * 2,
+              width: "100%", height: lifestyleBandH,
+              borderRadius: 4, overflow: "hidden",
+            }}
+          >
+            {lifestyleBandTiles.length === 0 && (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 7, letterSpacing: "0.22em", color: MUTED, textTransform: "uppercase", marginBottom: 5 }}>HOW YOU LIVE</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>Tap edit profile to add lifestyle priorities</div>
+                </div>
+              </div>
+            )}
+
+            {lifestyleRects.map(rect => {
+              const tile = lifestyleBandTiles.find(t => t.id === rect.id);
+              if (!tile) return null;
+              const isUnalloc = tile.id === "unallocated";
+              const pct = (tile.value / inc * 100).toFixed(0);
+              const pad = rect.w < 50 ? 5 : 8;
+              const pctSize   = Math.max(10, Math.min(24, Math.min(rect.w / 3.6, rect.h / 2.6)));
+              const labelSize = Math.max(7, Math.min(9, rect.w / 9));
+              const moSize    = Math.max(6, Math.min(8, rect.w / 9));
+              const showMo    = rect.h > pctSize + labelSize + 16;
+
+              return (
+                <div
+                  key={rect.id}
+                  onClick={() => {
+                    if (isUnalloc || tile.locked) return;
+                    const cat = profile.cats.find(c => c.id === tile.id);
+                    setEditingTile(tile.id);
+                    setEditingAmt(String(Math.round(cat?.monthly || 0)));
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: rect.x, top: rect.y,
+                    width: Math.max(0, rect.w), height: Math.max(0, rect.h),
+                    background: isUnalloc
+                      ? `repeating-linear-gradient(135deg, ${tile.color}80 0px, ${tile.color}80 5px, ${tile.color}44 5px, ${tile.color}44 10px)`
+                      : tile.kind === "savings"
+                      ? `repeating-linear-gradient(45deg, ${tile.color}, ${tile.color} 6px, ${darkenHex(tile.color, 25)} 6px, ${darkenHex(tile.color, 25)} 12px)`
+                      : tile.color,
+                    borderRadius: 5,
+                    overflow: "hidden",
+                    cursor: isUnalloc ? "default" : "pointer",
+                    transition: "width 0.18s ease, height 0.18s ease",
+                  }}
+                >
+                  {isUnalloc ? (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, overflow: "hidden" }}>
+                      <div style={{ fontSize: labelSize, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600", color: "rgba(30,26,14,0.45)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>UNALLOCATED</div>
+                      {showMo && <div style={{ fontSize: moSize, color: "rgba(30,26,14,0.35)", marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo · room to grow</div>}
+                    </div>
+                  ) : (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.3)", overflow: "hidden" }}>
+                      <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>
+                      <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{pct}%</div>
+                      {showMo && <div style={{ fontSize: moSize, opacity: 0.62, marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo</div>}
+                    </div>
+                  )}
+                  {!isUnalloc && rect.w >= 55 && rect.h >= 48 && (
+                    <div style={{ position: "absolute", bottom: 4, right: 4, opacity: 0.4, pointerEvents: "none" }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                      </svg>
                     </div>
                   )}
                 </div>
-              ) : (
-                // Tiny tile — pct only, centered
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ fontSize: Math.max(8, Math.min(16, rect.w * 0.45)), fontWeight: "800", color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
-                    {pct.toFixed(0)}%
-                  </div>
-                </div>
-              )}
+              );
+            })}
 
-              {/* Pencil icon — tap affordance for editable tiles */}
-              {!tile.locked && rect.w >= 60 && rect.h >= 60 && (
-                <div style={{ position: "absolute", bottom: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                  </svg>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            {/* HOW YOU LIVE label — when tiles present */}
+            {lifestyleBandTiles.length > 0 && (
+              <div style={{ position: "absolute", top: 4, left: 8, fontSize: 6, letterSpacing: "0.22em", color: "rgba(30,26,14,0.22)", textTransform: "uppercase", pointerEvents: "none", zIndex: 1 }}>HOW YOU LIVE</div>
+            )}
 
-        {/* Tile edit popover */}
-        {editingTile && (
-          <div
-            style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}
-            onClick={() => { setEditingTile(null); setEditingAmt(""); }}
-          >
-            <div onClick={e => e.stopPropagation()} style={{ background: BG, borderRadius: 8, padding: "18px 16px", width: 220, boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
-              <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 10 }}>
-                {tiles.find(t => t.id === editingTile)?.label} — monthly
+            {/* Deficit chip */}
+            {lifestyleSurplus < 0 && (
+              <div style={{ position: "absolute", top: 6, right: 8, background: "rgba(200,65,42,0.92)", borderRadius: 3, padding: "3px 7px", zIndex: 2 }}>
+                <div style={{ fontSize: 8, fontWeight: "700", color: CREAM, letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                  Over by ${Math.round(-lifestyleSurplus).toLocaleString("en-US")}/mo
+                </div>
               </div>
-              <div style={{ position: "relative", marginBottom: 10 }}>
-                <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
-                <input
-                  autoFocus type="number" inputMode="numeric"
-                  value={editingAmount}
-                  onChange={e => setEditingAmt(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") { setEditingTile(null); setEditingAmt(""); } }}
-                  style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
-                />
-              </div>
-              <button onClick={confirmEdit} disabled={!editingAmount} style={{ ...btnPrimary(!editingAmount), padding: "9px 14px", fontSize: 9 }}>
-                Update
-              </button>
-            </div>
+            )}
           </div>
-        )}
 
+          {/* Tile edit popover */}
+          {editingTile && (
+            <div
+              style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}
+              onClick={() => { setEditingTile(null); setEditingAmt(""); }}
+            >
+              <div onClick={e => e.stopPropagation()} style={{ background: BG, borderRadius: 8, padding: "18px 16px", width: 220, boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
+                <div style={{ fontSize: 9, color: MUTED, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 10 }}>
+                  {lifestyleTiles.find(t => t.id === editingTile)?.label} — monthly
+                </div>
+                <div style={{ position: "relative", marginBottom: 10 }}>
+                  <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: MUTED }}>$</span>
+                  <input
+                    autoFocus type="number" inputMode="numeric"
+                    value={editingAmount}
+                    onChange={e => setEditingAmt(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") { setEditingTile(null); setEditingAmt(""); } }}
+                    style={{ ...inputStyle, paddingLeft: 22, fontSize: 16 }}
+                  />
+                </div>
+                <button onClick={confirmEdit} disabled={!editingAmount} style={{ ...btnPrimary(!editingAmount), padding: "9px 14px", fontSize: 9 }}>
+                  Update
+                </button>
+              </div>
+            </div>
+          )}
+        </>}
       </div>
 
       {/* Actions + nonTreemapCats */}
@@ -1566,6 +1658,8 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
       housingPct,
       verdict,
       cats: profile.cats.map(c => ({ label: c.label, kind: c.kind, monthly: c.monthly || null, propertyNeed: c.propertyNeed || null })),
+      lifestyleBudget: Math.max(inc - (tiles.find(t => t.id === "housing")?.value || 0) - profile.essentialsTotal, 0),
+      lifestyleTotal: profile.cats.filter(c => c.kind === "recurring" || c.kind === "savings").reduce((s, c) => s + (c.monthly || 0), 0),
       downPct,
       rate,
     }).then(text => {
@@ -2295,7 +2389,7 @@ export default function App() {
       {screen === "welcome"    && <WelcomeScreen onContinue={() => setScreen("onboarding")} />}
       {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
       {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
-      {screen === "map"        && <MapScreen property={property} profile={profile} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} />}
+      {screen === "map"        && <MapScreen property={property} profile={profile} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} onEditProfile={() => setShowProfileEditor(true)} />}
       {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
     </div>
   );
