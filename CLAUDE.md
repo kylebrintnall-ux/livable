@@ -115,6 +115,38 @@ Helper functions:
 - Do NOT over-invest in PWA-specific bug fixes. Patch what's needed for prototype testability, then move on.
 - Things that go away in native iOS: input auto-zoom, scroll lock weirdness, print sheet issues, viewport-height gymnastics, navigator.share fallbacks. Don't build elaborate workarounds for any of these.
 
+## Round 8 — Multi-dimensional verdict system
+
+Replaces `getSignal(housingPct)` (single-axis, housing % only) with `computeVerdict` (three-axis weighted score).
+
+### Scoring functions
+- `scoreFinancial(housingPct, tiles, profile)` — 45% weight. Housing %, buffer ratio (leftover income vs essentials), lifestyle compression (recurring cats vs income).
+- `scoreLifestyle(tiles, profile)` — 30% weight. Cat-count score (more priorities = higher bar), priority alignment (top-ranked cats get higher weight), one_time / property cats penalize slightly if many.
+- `scoreProperty(property, profile)` — 25% weight. `PROPERTY_NEED_KEYWORDS` maps keywords (yard, garage, basement, pool, office, studio, gym…) to property fields. `matchPropertyNeed(needString, property)` returns 0–1 match score. Property cats with no matching data score 0.5 (unknown).
+- `integrateVerdict({ financial, lifestyle, property })` — weighted sum: 0.45 × F + 0.30 × L + 0.25 × P → 0–100.
+
+### Five verdict tiers
+| Score | Label | Color |
+|---|---|---|
+| ≥ 80 | Fits Your Life | #4A9B6F |
+| ≥ 65 | Mostly Fits | #6FA876 |
+| ≥ 50 | Real Trade-Off | #E8A030 |
+| ≥ 35 | Stretched | #D97B3A |
+| < 35 | Works Against You | #C8412A |
+
+Each tier has `label`, `color`, `headline` (short), `subline` (housingPct-interpolated).
+
+`computeVerdict` returns `{ label, color, headline, subline, score, financial, lifestyle, property }`. Returns safe defaults when `tiles` is empty.
+
+### Layout changes
+- **MapScreen**: Verdict headline block sits **above** the treemap (not below). Suppressed (`{housingTile && ...}`) until tiles populate to prevent first-render flicker. Block shows badge (label), headline + subline, and three mini progress bars (F / L / P scores).
+- **ShareScreen header**: Full-bleed colored header (`verdict.color`) with verdict label, headline/subline, and housing % — replaces old signal badge.
+- **Old signal box below treemap**: Removed.
+
+### AI / PDF integration
+- `buildSummaryPrompt` receives `verdict` alongside `signal`. Prompt includes: `Verdict: ${label} (financial fit F/100, lifestyle fit L/100, property fit P/100)`.
+- `/api/pdf` accepts `verdict` (with `signal` as fallback for old clients). Badge uses `verdict.color`.
+
 ## Fixed bugs / completed work
 - [x] Mobile layout: max width 430px, legend 2-col grid, photo card 2-line clamp, scroll lock scoped to treemap only
 - [x] Backend wiring: frontend calls `/api/*` (not Anthropic directly); server.js handles prompt construction
@@ -124,3 +156,4 @@ Helper functions:
 - [x] Onboarding model: CATS replaced with 9 discretionary-only lifestyle categories; "Needs" renamed "Essentials" throughout; onboarding label updated to clarify essentials includes savings/healthcare/education
 - [x] Round 6: cat kind field (recurring/savings/one_time/property); 3-stage pick flow; treemap filtered to recurring+savings; savings stripe; nonTreemapCats section; four-kind AI prompt
 - [x] Round 7: richer property data (lotSize, propertyType, daysOnMarket, city/state/zip, lat/lng); property context helpers (describePropertyType, describeLot, describeAge, describeMarketTime, buildPropertyContext); three-dimensional AI cross-examination (financial + lifestyle + property fit); word count 60-90; photo card meta includes lot size; Just listed / 90+ days badges; /api/summary accepts nested property object with flat-field backwards compat. Lat/lng and MLS info passed to AI but never surfaced in UI.
+- [x] Round 8: computeVerdict (scoreFinancial/scoreLifestyle/scoreProperty weighted 45/30/25); five verdict tiers; verdict headline above treemap (suppressed until housingTile ready); ShareScreen verdict-led header; SVG savings stripe via defs/pattern; toLocaleString("en-US") throughout; beds/baths null guards in ShareScreen and PDF meta; computeRects guard for missing housing tile.
