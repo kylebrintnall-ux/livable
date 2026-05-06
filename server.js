@@ -162,6 +162,7 @@ function computeRects(tiles, W, H, gap) {
   if (!tiles.length) return [];
   const total = tiles.reduce((s, t) => s + t.value, 0);
   const housing = tiles.find(t => t.id === "housing");
+  if (!housing) return [];
   const rest = tiles.filter(t => t.id !== "housing");
   const leftW = (housing.value / total) * (W - gap);
   const rightW = W - leftW - gap;
@@ -226,7 +227,7 @@ app.post("/api/summary", async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     });

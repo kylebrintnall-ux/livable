@@ -195,6 +195,7 @@ function computeRects(tiles, W, H, gap) {
   const g = gap;
   const total = tiles.reduce((s, t) => s + t.value, 0);
   const housing = tiles.find(t => t.id === "housing");
+  if (!housing) return [];
   const rest = tiles.filter(t => t.id !== "housing");
   const leftW = (housing.value / total) * (W - g);
   const rightW = W - leftW - g;
@@ -1196,8 +1197,8 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
         </div>
       </div>
 
-      {/* Verdict headline — above treemap */}
-      <div style={{
+      {/* Verdict headline — above treemap (suppressed until tiles are ready) */}
+      {housingTile && <div style={{
         flexShrink: 0,
         background: `${verdict.color}18`,
         border: `1.5px solid ${verdict.color}44`,
@@ -1228,7 +1229,7 @@ function MapScreen({ property, profile, useCount, shareCount, onBack, onShare, o
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Treemap — capped at 44dvh so tiles stay roughly square on any phone */}
       <div
@@ -1722,12 +1723,21 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
           <div style={{ marginBottom: 14, borderRadius: 4, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.1)" }}>
             <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+              <defs>
+                {tiles.filter(t => t.kind === "savings").map(t => (
+                  <pattern key={`sp-${t.id}`} id={`sp-${t.id}`} patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">
+                    <rect width="6" height="12" fill={t.color} />
+                    <rect x="6" width="6" height="12" fill={darkenHex(t.color, 25)} />
+                  </pattern>
+                ))}
+              </defs>
               {shareRects.map(rect => {
                 const tile = tiles.find(t => t.id === rect.id);
                 if (!tile) return null;
                 const pct = (tile.value / inc) * 100;
                 const pad = 5;
                 const avail = rect.w - pad * 2;
+                const tileFill = tile.kind === "savings" ? `url(#sp-${tile.id})` : tile.color;
 
                 const labelSize = Math.max(5, Math.min(8, avail / (tile.label.length * 0.65)));
                 const pctSize   = Math.max(7, Math.min(18, avail / 3.2));
@@ -1741,7 +1751,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (!fitsH && !useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h/2 + pctSize*0.35}
                         fontSize={Math.min(pctSize, rect.h * 0.4)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1755,7 +1765,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
                 if (useVert) {
                   return (
                     <g key={rect.id}>
-                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                       <text x={rect.x + rect.w/2} y={rect.y + rect.h - pad - moSize - 2}
                         fontSize={Math.min(pctSize, rect.w * 0.6)} fill="rgba(252,246,224,0.96)"
                         fontFamily="Futura, Century Gothic, sans-serif" fontWeight="800"
@@ -1782,7 +1792,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
 
                 return (
                   <g key={rect.id}>
-                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tile.color} rx={6} />
+                    <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={tileFill} rx={6} />
                     <text x={rect.x + pad} y={rect.y + pad + labelSize}
                       fontSize={labelSize} fill="rgba(252,246,224,0.82)"
                       fontFamily="Futura, Century Gothic, sans-serif" fontWeight="600">
