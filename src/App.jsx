@@ -1203,21 +1203,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: "700", color: INK, letterSpacing: "-0.01em" }}>{verdict.headline}</div>
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{verdict.subline}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-          {[
-            { key: "F", score: verdict.financial },
-            { key: "L", score: verdict.lifestyle },
-            { key: "P", score: verdict.property },
-          ].map(({ key, score }) => (
-            <div key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <div style={{ fontSize: 7, color: MUTED, letterSpacing: "0.06em", width: 8, textAlign: "right" }}>{key}</div>
-              <div style={{ width: 32, height: 3, background: "rgba(0,0,0,0.1)", borderRadius: 2 }}>
-                <div style={{ width: `${score}%`, height: "100%", background: verdict.color, borderRadius: 2, opacity: 0.85 }} />
-              </div>
-            </div>
-          ))}
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{verdict.subline}</div>
         </div>
       </div>}
 
@@ -1246,16 +1232,16 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               padding: "0 14px", boxSizing: "border-box",
             }}
           >
-            <div style={{ position: "absolute", top: 4, left: 10, fontSize: 6, letterSpacing: "0.22em", color: "rgba(250,245,232,0.38)", textTransform: "uppercase", pointerEvents: "none" }}>WHERE YOU LIVE</div>
+            <div style={{ position: "absolute", top: 6, left: 10, fontSize: 8, letterSpacing: "0.18em", color: "rgba(250,245,232,0.52)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>WHERE YOU LIVE</div>
             <div>
               <div style={{ fontSize: Math.max(8, Math.min(11, housingBandH / 6)), fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Housing</div>
               {housingBandH > 58 && (
-                <div style={{ fontSize: Math.max(9, Math.min(12, housingBandH / 6)), color: "rgba(250,245,232,0.5)", marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: "rgba(250,245,232,0.5)", marginTop: 2 }}>
                   ${Math.round(housingTile.value).toLocaleString("en-US")}/mo
                 </div>
               )}
             </div>
-            <div style={{ fontSize: Math.max(20, Math.min(42, housingBandH * 0.52)), fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
+            <div style={{ fontSize: 32, fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
               {(housingTile.value / inc * 100).toFixed(0)}%
             </div>
           </div>
@@ -1272,11 +1258,11 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               padding: "0 12px", boxSizing: "border-box",
             }}
           >
-            <div style={{ position: "absolute", top: 3, left: 10, fontSize: 6, letterSpacing: "0.22em", color: "rgba(250,245,232,0.32)", textTransform: "uppercase", pointerEvents: "none" }}>WHAT YOU NEED</div>
+            <div style={{ position: "absolute", top: 4, left: 10, fontSize: 8, letterSpacing: "0.18em", color: "rgba(250,245,232,0.52)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>WHAT YOU NEED</div>
             <div style={{ fontSize: 9, fontWeight: "700", letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(250,245,232,0.72)" }}>Essentials</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)" }}>${Math.round(needsTile?.value || 0).toLocaleString("en-US")}/mo</div>
-              <div style={{ fontSize: 16, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em" }}>
+              <div style={{ fontSize: 11, color: "rgba(250,245,232,0.5)" }}>${Math.round(needsTile?.value || 0).toLocaleString("en-US")}/mo</div>
+              <div style={{ fontSize: 32, fontWeight: "800", color: CREAM, letterSpacing: "-0.02em", lineHeight: 1 }}>
                 {((needsTile?.value || 0) / inc * 100).toFixed(0)}%
               </div>
             </div>
@@ -1304,11 +1290,11 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               if (!tile) return null;
               const isUnalloc = tile.id === "unallocated";
               const pct = (tile.value / inc * 100).toFixed(0);
-              const pad = rect.w < 50 ? 5 : 8;
+              const pad = rect.w < 70 ? 6 : 8;
               const pctSize   = Math.max(10, Math.min(24, Math.min(rect.w / 3.6, rect.h / 2.6)));
               const labelSize = Math.max(7, Math.min(9, rect.w / 9));
               const moSize    = Math.max(6, Math.min(8, rect.w / 9));
-              const showLabel      = rect.w >= 50 && rect.h >= 20;
+              const showLabel      = rect.w >= 70 && rect.h >= 20;
               const showPercentage = showLabel && rect.h >= 28;
               const showDollar     = showLabel && rect.h >= 40;
 
@@ -1343,14 +1329,14 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                     </div>
                   ) : (
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.3)", overflow: "hidden" }}>
-                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>}
+                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>}
                       {showPercentage && <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{pct}%</div>}
                       {showDollar && <div style={{ fontSize: moSize, opacity: 0.62, marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo</div>}
                     </div>
                   )}
-                  {!isUnalloc && rect.w >= 55 && rect.h >= 48 && (
-                    <div style={{ position: "absolute", bottom: 4, right: 4, opacity: 0.4, pointerEvents: "none" }}>
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  {!isUnalloc && rect.w >= 80 && rect.h >= 60 && (
+                    <div style={{ position: "absolute", bottom: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
                       </svg>
                     </div>
@@ -1361,7 +1347,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
 
             {/* HOW YOU LIVE label — when tiles present */}
             {lifestyleBandTiles.length > 0 && (
-              <div style={{ position: "absolute", top: 4, left: 8, fontSize: 6, letterSpacing: "0.22em", color: "rgba(30,26,14,0.22)", textTransform: "uppercase", pointerEvents: "none", zIndex: 1 }}>HOW YOU LIVE</div>
+              <div style={{ position: "absolute", top: 6, left: 8, fontSize: 8, letterSpacing: "0.18em", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", pointerEvents: "none", zIndex: 2 }}>HOW YOU LIVE</div>
             )}
 
             {/* Deficit chip */}

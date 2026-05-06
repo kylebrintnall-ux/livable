@@ -103,6 +103,9 @@ Helper functions:
 - `darkenHex(hex, amt)` — darkens a hex color by `amt` per channel
 - `catKindSublabel(cat)` — returns display sub-label string for a cat object
 
+### Tap-only interaction (Round 9 / 9.5)
+Pencil icon (12×12 SVG) in bottom-right corner of unlocked lifestyle tiles where `rect.w ≥ 80 && rect.h ≥ 60`. Below that threshold the tile is still tappable but no icon appears.
+
 ## Three-band treemap (Round 9.2)
 
 The treemap renders three vertically-stacked bands inside a single `position: relative` container:
@@ -196,3 +199,4 @@ Each tier has `label`, `color`, `headline` (short), `subline` (housingPct-interp
 - [x] Round 9.1: restored lifestyle tiles (monthly>0 filter removed; Math.max(...,1) floor restored); Anthropic model updated to claude-sonnet-4-6 (dated snapshot deprecated); PDF SVG Text fontFamily:Helvetica-Bold replaced with fontWeight:bold (react-pdf SVG font crash); MapScreen outer wrapper uses flex:1+minHeight:0 (iOS height:100% unreliable in flex).
 - [x] Round 9.2: Three-band treemap (Housing/Essentials/Lifestyle); computeBandRects for lifestyle band; band height clamps (housing 30-55%, essentials 15%, lifestyle remainder); unallocated tile when lifestyle underspent; deficit chip when overspent; band labels WHERE YOU LIVE/WHAT YOU NEED/HOW YOU LIVE; verdict sublines use lifestyle-budget dollars; AI summary receives lifestyleBudget+lifestyleTotal; WelcomeScreen subhead echoes three-band framing; Essentials band taps to profile editor; FIXED badges removed; onEditProfile prop threaded to MapScreen.
 - [x] Round 9.3: PDF font — Jost registered via Font.register() from @fontsource/jost on jsDelivr CDN; fontFamily:"Jost" applied to all PDF SVG Text elements. PDF + live treemap min-size thresholds: showLabel (w≥50 && h≥20), showPercentage (showLabel && h≥28), showDollar (showLabel && h≥40); tiles below threshold render as solid colored regions with no text.
+- [x] Round 9.5: Band header labels render once per band at band level (not inside tiles), zIndex:2, fontSize:8, consistent color; Housing/Essentials pct standardized to fontSize:32 with dollar at fontSize:11; F/L/P dimension bars removed from verdict box (scoring still drives label/color/subline); live tile showLabel threshold raised to w≥70 for narrow-tile legibility; pencil icon threshold raised to w≥80 && h≥60, size 12px; tile label marginBottom:3 for breathing room.
