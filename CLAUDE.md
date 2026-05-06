@@ -115,6 +115,24 @@ Helper functions:
 - Do NOT over-invest in PWA-specific bug fixes. Patch what's needed for prototype testability, then move on.
 - Things that go away in native iOS: input auto-zoom, scroll lock weirdness, print sheet issues, viewport-height gymnastics, navigator.share fallbacks. Don't build elaborate workarounds for any of these.
 
+## Round 9 — Foundation audit
+
+### Welcome screen
+`WelcomeScreen` component shown when `profile == null` on load. Slogan: "Make your dream home doable."
+Routing: cold-start → `"welcome"` → `"onboarding"` → `"address"`. Returning users (profile in localStorage) skip welcome and land on `"address"` directly. "Start over" in ProfileEditorOverlay goes to `"onboarding"` (skips marketing). Slogan propagated to `<title>`, `meta[name=description]`, og:description, twitter:description in `index.html`.
+
+### Single source of truth
+`profile.cats[].monthly` is the ONLY value source. No `Math.max(monthly, 1)` floor, no auto-allocation. Tile-building useEffect filters to cats where `(monthly || 0) > 0` — $0 cats don't appear in the treemap at all. `computeRects` call also filters `tiles.filter(t => t.value > 0)` to prevent NaN from 0-sum rows. `confirmEdit` allows setting to $0 (removes tile on next rebuild). `onCatAmountChange` still syncs edit → profile → localStorage → re-render chain. AI summary reads from `profile.cats` which is kept in sync. ShareScreen and PDF breakdown tables filter to `t.value > 0`.
+
+### Tap-only interaction
+Edge-drag system fully removed: `draggingEdge/hoveredEdge` state, `dragRef/rafRef`, `edgeDefs`, `startEdgeDrag`, `moveEdge`, drag useEffect, `getEdgePos`, `HANDLE_V/H`, edge handles JSX. Treemap is a pure display surface — all editing via tap → popover. Pencil icon (10×10 SVG) in bottom-right corner of unlocked tiles where rect.w ≥ 60 && rect.h ≥ 60.
+
+### Map screen layout
+Property card height: 130px (was 80px). Address: fontSize 14, fontWeight 700. Treemap container: `flex: "1 1 auto"` with no `maxHeight` cap — fills all remaining vertical space.
+
+### PDF fixes
+Treemap: 480×280 (was 110px tall — now dominant visual). SVG text uses `fill: PDF_CREAM` (solid hex, not rgba) — fixes blue text regression. Text sizes scaled for larger treemap (`pctSize` up to 28). Breakdown filters `tiles.filter(t => t.value > 0)`. Tagline updated to "MAKE YOUR DREAM HOME DOABLE".
+
 ## Round 8 — Multi-dimensional verdict system
 
 Replaces `getSignal(housingPct)` (single-axis, housing % only) with `computeVerdict` (three-axis weighted score).
@@ -157,3 +175,4 @@ Each tier has `label`, `color`, `headline` (short), `subline` (housingPct-interp
 - [x] Round 6: cat kind field (recurring/savings/one_time/property); 3-stage pick flow; treemap filtered to recurring+savings; savings stripe; nonTreemapCats section; four-kind AI prompt
 - [x] Round 7: richer property data (lotSize, propertyType, daysOnMarket, city/state/zip, lat/lng); property context helpers (describePropertyType, describeLot, describeAge, describeMarketTime, buildPropertyContext); three-dimensional AI cross-examination (financial + lifestyle + property fit); word count 60-90; photo card meta includes lot size; Just listed / 90+ days badges; /api/summary accepts nested property object with flat-field backwards compat. Lat/lng and MLS info passed to AI but never surfaced in UI.
 - [x] Round 8: computeVerdict (scoreFinancial/scoreLifestyle/scoreProperty weighted 45/30/25); five verdict tiers; verdict headline above treemap (suppressed until housingTile ready); ShareScreen verdict-led header; SVG savings stripe via defs/pattern; toLocaleString("en-US") throughout; beds/baths null guards in ShareScreen and PDF meta; computeRects guard for missing housing tile.
+- [x] Round 9: WelcomeScreen for cold-start users (slogan "Make your dream home doable"); routing welcome→onboarding→address; returning users skip welcome; slogan in HTML meta/og/twitter tags; single source of truth — profile.cats[].monthly drives tiles, no min(1) floor, 0-value cats excluded from treemap; tile editing persists to localStorage immediately; breakdown table filters $0 tiles; edge-drag interaction removed (tap-only); pencil icon affordance on lifestyle tiles ≥60×60; property card height 130px; treemap flex:1 without maxHeight cap; PDF treemap 480×280 (was 110px tall); PDF SVG text uses PDF_CREAM fill (fixes blue text); PDF breakdown filters $0 tiles; PDF tagline updated to slogan.

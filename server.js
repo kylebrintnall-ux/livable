@@ -265,24 +265,25 @@ app.post("/api/pdf", async (req, res) => {
   ] : [];
 
   // Treemap SVG for PDF
-  const MAP_W = 480, MAP_H = 110, MAP_GAP = 2;
-  const mapRects = computeRects(tiles, MAP_W, MAP_H, MAP_GAP);
+  const MAP_W = 480, MAP_H = 280, MAP_GAP = 3;
+  const mapTiles = tiles.filter(t => t.value > 0);
+  const mapRects = computeRects(mapTiles, MAP_W, MAP_H, MAP_GAP);
   const treemapSvg = h(View, { style: { marginBottom: 14 } },
     h(Svg, { width: MAP_W, height: MAP_H, viewBox: `0 0 ${MAP_W} ${MAP_H}` },
       ...mapRects.map(rect => {
-        const tile = tiles.find(t => t.id === rect.id);
+        const tile = mapTiles.find(t => t.id === rect.id);
         if (!tile) return null;
         const pct = (tile.value / income) * 100;
-        const pad = 4;
-        const pctSize = Math.max(8, Math.min(16, rect.w / 4));
-        const labelSize = 5.5;
-        const children = [h(Rect, { key: `r_${rect.id}`, x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: tile.color, rx: 3 })];
-        if (rect.w > 28) {
+        const pad = 6;
+        const pctSize = Math.max(10, Math.min(28, Math.min(rect.w / 3.5, rect.h / 3.5)));
+        const labelSize = Math.max(6, Math.min(10, rect.w / 8));
+        const children = [h(Rect, { key: `r_${rect.id}`, x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: tile.color, rx: 4 })];
+        if (rect.w > 30) {
           children.push(
-            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: "rgba(252,246,224,0.8)", fontFamily: "Helvetica" },
+            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: PDF_CREAM, fontFamily: "Helvetica" },
               tile.label.toUpperCase()
             ),
-            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 3 + pctSize, fontSize: pctSize, fill: "rgba(252,246,224,0.96)", fontFamily: "Helvetica-Bold" },
+            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize, fontSize: pctSize, fill: PDF_CREAM, fontFamily: "Helvetica-Bold" },
               `${pct.toFixed(0)}%`
             )
           );
@@ -296,7 +297,7 @@ app.post("/api/pdf", async (req, res) => {
     h(View, { style: pdfS.header },
       h(View, null,
         h(Text, { style: pdfS.brand }, "LIVABLE"),
-        h(Text, { style: pdfS.tagline }, "HOME · BUDGET · LIFE")
+        h(Text, { style: pdfS.tagline }, "MAKE YOUR DREAM HOME DOABLE")
       ),
       h(View, { style: [pdfS.badge, { backgroundColor: displayVerdict.color }] },
         h(Text, { style: pdfS.badgeLabel }, displayVerdict.label.toUpperCase()),
@@ -316,7 +317,7 @@ app.post("/api/pdf", async (req, res) => {
     treemapSvg,
     ...summaryChildren,
     h(Text, { style: pdfS.secLabel }, `MONTHLY BREAKDOWN · $${Number(income).toLocaleString("en-US")} TAKE-HOME`),
-    ...tiles.map((t, i) =>
+    ...tiles.filter(t => t.value > 0).map((t, i) =>
       h(View, { key: `t${i}`, style: pdfS.row },
         h(View, { style: [pdfS.swatch, { backgroundColor: t.color }] }),
         h(Text, { style: pdfS.rowLabel }, `${t.label}${t.locked ? " — Fixed" : ""}`),

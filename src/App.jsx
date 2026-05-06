@@ -177,7 +177,7 @@ function computeVerdict({ tiles, profile, property, housingPct }) {
   } else if (score >= 50) {
     label = "Real Trade-Off";   color = "#E8A030";
     headline = "Something gives.";
-    subline  = `Housing at ${housingPct.toFixed(0)}% reshapes your lifestyle. Drag to see what.`;
+    subline  = `Housing at ${housingPct.toFixed(0)}% reshapes your lifestyle. Tap tiles to adjust.`;
   } else if (score >= 35) {
     label = "Stretched";        color = "#D97B3A";
     headline = "Stretched thin.";
@@ -300,6 +300,43 @@ const btnPrimary = (disabled) => ({
   textTransform: "uppercase", cursor: disabled ? "default" : "pointer",
   borderRadius: 3, fontFamily: font, fontWeight: "700", width: "100%",
 });
+
+// ── Screen: Welcome (cold-start) ──────────────────────────────────────────
+function WelcomeScreen({ onContinue }) {
+  return (
+    <div style={{
+      height: "100%",
+      background: BG,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: "40px 24px",
+      boxSizing: "border-box",
+    }}>
+      <div style={{ width: "100%", maxWidth: MOBILE_MAX, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ fontSize: 28, fontWeight: "800", color: INK, letterSpacing: "-0.01em", marginBottom: 4 }}>
+          LIVABLE
+        </div>
+        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: MUTED, textTransform: "uppercase", marginBottom: 72 }}>
+          HOME · BUDGET · LIFE
+        </div>
+        <div style={{ fontSize: 32, fontWeight: "800", color: INK, letterSpacing: "-0.02em", lineHeight: 1.1, textAlign: "center", marginBottom: 72 }}>
+          Make your dream<br />home doable.
+        </div>
+        <button
+          onClick={onContinue}
+          style={{ ...btnPrimary(false), width: "auto", padding: "14px 36px", fontSize: 11, letterSpacing: "0.12em" }}
+        >
+          Tell us about your life →
+        </button>
+        <div style={{ marginTop: 12, fontSize: 10, color: MUTED, letterSpacing: "0.04em" }}>
+          Takes about two minutes
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Screen: Onboarding ────────────────────────────────────────────────────
 function OnboardingScreen({ onDone }) {
@@ -866,14 +903,10 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [tiles, setTiles]     = useState([]);
   const [dims, setDims]       = useState({ w: 600, h: 300 });
-  const [draggingEdge, setDraggingEdge] = useState(null);
-  const [hoveredEdge, setHoveredEdge]   = useState(null);
   const [editingTile, setEditingTile]   = useState(null);
   const [editingAmount, setEditingAmt]  = useState("");
   const [photoExpanded, setPhotoExpanded] = useState(false);
   const containerRef = useRef(null);
-  const dragRef      = useRef(null);
-  const rafRef       = useRef(null);
   const GAP = 3;
 
   const inc = profile.income;
@@ -886,14 +919,16 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
     const insurance = Math.round(property.price * 0.005 / 12);
     const housingMonthly = payment + pmi + taxes + insurance;
 
-    const treemapCats = profile.cats.filter(c => c.kind === "recurring" || c.kind === "savings");
+    const treemapCats = profile.cats.filter(c =>
+      (c.kind === "recurring" || c.kind === "savings") && (c.monthly || 0) > 0
+    );
     setTiles([
       { id: "housing", label: "Housing", value: housingMonthly, locked: true, color: HOUSING_COLOR },
       { id: "needs", label: "Essentials", value: Math.max(profile.essentialsTotal, 1), locked: true, color: NEEDS_COLOR },
       ...treemapCats.map((cat, i) => ({
         id: cat.id,
         label: cat.label,
-        value: Math.max(cat.monthly || 0, 1),
+        value: cat.monthly,
         color: CAT_COLORS[i % CAT_COLORS.length],
         locked: false,
         custom: cat.custom,
@@ -929,117 +964,17 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
   const housingTile = tiles.find(t => t.id === "housing");
   const housingPct  = housingTile ? (housingTile.value / inc) * 100 : 0;
   const verdict     = computeVerdict({ tiles, profile, property, housingPct });
-  const rects       = computeRects(tiles, dims.w, dims.h, GAP);
-
-  // Edge defs derived from tiles
-  const edgeDefs = useCallback(() => {
-    const nonH = tiles.filter(t => t.id !== "housing");
-    if (!nonH.length) return [];
-    const ROW_SIZE = 3;
-    const rows = [];
-    for (let i = 0; i < nonH.length; i += ROW_SIZE) rows.push(nonH.slice(i, i + ROW_SIZE));
-    const defs = [];
-    rows.forEach((row, ri) => {
-      for (let ci = 0; ci < row.length - 1; ci++) {
-        defs.push({
-          id: `R${ri}C${ci}`, orientation: "vertical",
-          groupA: row.slice(0, ci + 1).map(t => t.id),
-          groupB: row.slice(ci + 1).map(t => t.id),
-        });
-      }
-    });
-    for (let ri = 0; ri < rows.length - 1; ri++) {
-      defs.push({
-        id: `ROW${ri}`, orientation: "horizontal",
-        groupA: rows.slice(0, ri + 1).flat().map(t => t.id),
-        groupB: rows.slice(ri + 1).flat().map(t => t.id),
-      });
-    }
-    return defs;
-  }, [tiles])();
-
-  const startEdgeDrag = useCallback((e, def) => {
-    e.preventDefault(); e.stopPropagation();
-    const cx = e.touches ? e.touches[0].clientX : e.clientX;
-    const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    const getVal = id => tiles.find(t => t.id === id)?.value || 0;
-    const aTotal = def.groupA.reduce((s, id) => s + getVal(id), 0);
-    const bTotal = def.groupB.reduce((s, id) => s + getVal(id), 0);
-    dragRef.current = { def, startX: cx, startY: cy, aTotal, bTotal, snapData: [...tiles] };
-    setDraggingEdge(def.id);
-  }, [tiles]);
-
-  const moveEdge = useCallback((cx, cy) => {
-    if (!dragRef.current) return;
-    const { def, startX, startY, aTotal, bTotal, snapData } = dragRef.current;
-    const delta = def.orientation === "vertical" ? cx - startX : cy - startY;
-    const span  = def.orientation === "vertical" ? dims.w : dims.h;
-    const transfer = (delta / span) * (aTotal + bTotal);
-    setTiles(prev => prev.map(t => {
-      if (t.locked) return t;
-      if (def.groupA.includes(t.id)) {
-        const orig = snapData.find(s => s.id === t.id)?.value || t.value;
-        return { ...t, value: Math.max(8, orig + transfer * (orig / aTotal)) };
-      }
-      if (def.groupB.includes(t.id)) {
-        const orig = snapData.find(s => s.id === t.id)?.value || t.value;
-        return { ...t, value: Math.max(8, orig - transfer * (orig / bTotal)) };
-      }
-      return t;
-    }));
-  }, [dims]);
-
-  useEffect(() => {
-    if (!draggingEdge) return;
-    const onMove = e => {
-      const cx = e.touches ? e.touches[0].clientX : e.clientX;
-      const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(() => moveEdge(cx, cy));
-    };
-    const onUp = () => { setDraggingEdge(null); dragRef.current = null; };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onUp);
-    };
-  }, [draggingEdge, moveEdge]);
+  const rects       = computeRects(tiles.filter(t => t.value > 0), dims.w, dims.h, GAP);
 
   const confirmEdit = useCallback(() => {
     const val = parseFloat(editingAmount);
     if (isNaN(val) || val < 0) return;
-    const newVal = Math.max(val, 1);
+    const newVal = Math.max(val, 0);
     setTiles(prev => prev.map(t => t.id === editingTile ? { ...t, value: newVal } : t));
     if (onCatAmountChange) onCatAmountChange(editingTile, newVal);
     setEditingTile(null);
     setEditingAmt("");
   }, [editingTile, editingAmount, onCatAmountChange]);
-
-  const getEdgePos = (def) => {
-    const rm = Object.fromEntries(rects.map(r => [r.id, r]));
-    if (def.id.startsWith("ROW")) {
-      const lastId = def.groupA[def.groupA.length - 1];
-      const r = rm[lastId];
-      if (!r) return null;
-      const housingR = rm["housing"];
-      return { x: housingR ? housingR.w + GAP : 0, y: r.y + r.h, orientation: "horizontal", lenW: true };
-    }
-    const lastId = def.groupA[def.groupA.length - 1];
-    const r = rm[lastId];
-    if (!r) return null;
-    return { x: r.x + r.w, y: r.y, orientation: "vertical", lenH: r.h };
-  };
-
-  const HANDLE_V = 18;
-  const HANDLE_H = 48;
-  const housingR = rects.find(r => r.id === "housing");
-  const rightX   = housingR ? housingR.w + GAP : 0;
-  const rightW   = dims.w - rightX;
 
   const streetViewUrl = `/api/streetview?address=${encodeURIComponent(property.address)}`;
 
@@ -1125,13 +1060,13 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
         </div>
       )}
 
-      {/* Property photo card — 80px */}
+      {/* Property photo card */}
       <div
         onClick={() => setPhotoExpanded(true)}
         style={{
           borderRadius: 6, overflow: "hidden",
           boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
-          position: "relative", height: 80, background: INK,
+          position: "relative", height: 130, background: INK,
           cursor: "pointer", flexShrink: 0,
         }}
       >
@@ -1155,7 +1090,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
           display: "flex", flexDirection: "column", justifyContent: "flex-end",
           padding: "0 14px 10px",
         }}>
-          <div style={{ fontSize: 13, fontWeight: "800", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 14, fontWeight: "700", color: CREAM, letterSpacing: "-0.01em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.2 }}>
             {property.address}
           </div>
           <div style={{ fontSize: 9, color: "rgba(250,245,232,0.5)", marginTop: 3, letterSpacing: "0.04em" }}>
@@ -1232,12 +1167,11 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
         </div>
       </div>}
 
-      {/* Treemap — capped at 44dvh so tiles stay roughly square on any phone */}
+      {/* Treemap */}
       <div
         ref={containerRef}
         style={{
           flex: "1 1 auto",
-          maxHeight: "44dvh",
           position: "relative", borderRadius: 4,
           overflow: "hidden",
           boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
@@ -1268,7 +1202,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
           return (
             <div
               key={rect.id}
-              onClick={() => { if (!tile.locked && !draggingEdge) { setEditingTile(tile.id); setEditingAmt(String(Math.round(tile.value))); } }}
+              onClick={() => { if (!tile.locked) { setEditingTile(tile.id); setEditingAmt(String(Math.round(tile.value))); } }}
               style={{
                 position: "absolute",
                 left: rect.x, top: rect.y,
@@ -1277,7 +1211,7 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                   ? `repeating-linear-gradient(45deg, ${tile.color}, ${tile.color} 6px, ${darkenHex(tile.color, 25)} 6px, ${darkenHex(tile.color, 25)} 12px)`
                   : tile.color,
                 borderRadius: 8,
-                transition: draggingEdge ? "none" : "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
+                transition: "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease",
                 overflow: "hidden", touchAction: "none",
                 cursor: tile.locked ? "default" : "pointer",
               }}
@@ -1333,6 +1267,15 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                   </div>
                 </div>
               )}
+
+              {/* Pencil icon — tap affordance for editable tiles */}
+              {!tile.locked && rect.w >= 60 && rect.h >= 60 && (
+                <div style={{ position: "absolute", bottom: 5, right: 5, opacity: 0.45, pointerEvents: "none" }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={CREAM} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                  </svg>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1363,53 +1306,6 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
             </div>
           </div>
         )}
-
-        {/* Edge handles */}
-        {edgeDefs.map(def => {
-          const pos = getEdgePos(def);
-          if (!pos) return null;
-          const isV = pos.orientation === "vertical";
-          const isActive = draggingEdge === def.id;
-          const isHovered = hoveredEdge === def.id;
-          const rm = Object.fromEntries(rects.map(r => [r.id, r]));
-          const lastId = def.groupA[def.groupA.length - 1];
-          const refRect = rm[lastId];
-          const len = pos.lenW ? rightW : (refRect?.h || 100);
-
-          return (
-            <div
-              key={def.id}
-              onMouseDown={e => startEdgeDrag(e, def)}
-              onTouchStart={e => { e.preventDefault(); e.stopPropagation(); startEdgeDrag(e, def); }}
-              onMouseEnter={() => setHoveredEdge(def.id)}
-              onMouseLeave={() => setHoveredEdge(null)}
-              style={{
-                position: "absolute",
-                left: isV ? pos.x - HANDLE_V / 2 : pos.x,
-                top:  isV ? pos.y               : pos.y - HANDLE_H / 2,
-                width:  isV ? HANDLE_V : len,
-                height: isV ? len      : HANDLE_H,
-                cursor: isV ? "col-resize" : "row-resize",
-                zIndex: 30, display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <div style={{
-                background: isActive ? "rgba(252,246,224,0.9)" : isHovered ? "rgba(252,246,224,0.55)" : "rgba(252,246,224,0.18)",
-                borderRadius: 3,
-                width: isV ? 3 : "100%", height: isV ? "100%" : 3,
-                pointerEvents: "none", transition: "background 0.15s",
-              }} />
-              {!isV && (
-                <div style={{ position: "absolute", background: isActive ? "rgba(252,246,224,0.98)" : "rgba(252,246,224,0.6)", borderRadius: 6, width: 40, height: 6, pointerEvents: "none" }} />
-              )}
-              {isV && (isHovered || isActive) && (
-                <div style={{ position: "absolute", display: "flex", flexDirection: "column", gap: 4, pointerEvents: "none" }}>
-                  {[0,1,2].map(i => <div key={i} style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(252,246,224,0.9)" }} />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
 
       </div>
 
@@ -1850,7 +1746,7 @@ function ShareScreen({ data, profile, cachedSummary, onSummaryReady, onClose }) 
             <div style={{ fontSize: 8, letterSpacing: "0.2em", color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>
               Monthly Breakdown · ${inc.toLocaleString("en-US")} take-home
             </div>
-            {tiles.map(t => {
+            {tiles.filter(t => t.value > 0).map(t => {
               const pct = (t.value / inc) * 100;
               return (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
@@ -2328,7 +2224,7 @@ function ProfileEditorOverlay({ profile, onSave, onClose, onStartOver }) {
 // ══════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [profile, setProfile]             = useState(loadProfile);
-  const [screen, setScreen]               = useState(() => loadProfile() ? "address" : "onboarding");
+  const [screen, setScreen]               = useState(() => loadProfile() ? "address" : "welcome");
   const [property, setProperty]           = useState(null);
   const [useCount, setUseCount]           = useState(0);
   const [shareCount, setShareCount]       = useState(0);
@@ -2396,9 +2292,10 @@ export default function App() {
         />
       )}
 
+      {screen === "welcome"    && <WelcomeScreen onContinue={() => setScreen("onboarding")} />}
       {screen === "onboarding" && <OnboardingScreen onDone={handleOnboarding} />}
       {screen === "address"    && <AddressScreen usesLeft={3 - useCount} onSearch={handleSearch} onEditProfile={() => setShowProfileEditor(true)} />}
-      {screen === "map"        && <MapScreen property={property} profile={profile} useCount={useCount} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} />}
+      {screen === "map"        && <MapScreen property={property} profile={profile} shareCount={shareCount} onBack={() => setScreen("address")} onShare={handleShare} onCatAmountChange={handleCatAmountChange} />}
       {screen === "share"      && <ShareScreen data={shareData} profile={profile} cachedSummary={cachedSummary} onSummaryReady={setCachedSummary} onClose={() => setScreen("map")} />}
     </div>
   );
