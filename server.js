@@ -4,7 +4,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import React from "react";
-import { Document, Page, View, Text, Svg, Rect, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Svg, Rect, StyleSheet, renderToBuffer, Font } from "@react-pdf/renderer";
+
+Font.register({
+  family: "Jost",
+  fonts: [
+    { src: "https://cdn.jsdelivr.net/npm/@fontsource/jost/files/jost-latin-400-normal.woff2" },
+    { src: "https://cdn.jsdelivr.net/npm/@fontsource/jost/files/jost-latin-700-normal.woff2", fontWeight: "bold" },
+  ],
+});
 
 // ── PDF styles ─────────────────────────────────────────────────────────────
 const PDF_INK  = "#1e1a0e";
@@ -280,14 +288,29 @@ app.post("/api/pdf", async (req, res) => {
         const pad = 6;
         const pctSize = Math.max(10, Math.min(28, Math.min(rect.w / 3.5, rect.h / 3.5)));
         const labelSize = Math.max(6, Math.min(10, rect.w / 8));
+        const dollarSize = Math.max(6, Math.min(8, rect.w / 10));
+        const showLabel = rect.w >= 50 && rect.h >= 20;
+        const showPercentage = showLabel && rect.h >= 28;
+        const showDollar = showLabel && rect.h >= 40;
         const children = [h(Rect, { key: `r_${rect.id}`, x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: tile.color, rx: 4 })];
-        if (rect.w > 30) {
+        if (showLabel) {
           children.push(
-            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: PDF_CREAM },
+            h(Text, { key: `l_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize, fontSize: labelSize, fill: PDF_CREAM, fontFamily: "Jost" },
               tile.label.toUpperCase()
-            ),
-            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize, fontSize: pctSize, fill: PDF_CREAM, fontWeight: "bold" },
+            )
+          );
+        }
+        if (showPercentage) {
+          children.push(
+            h(Text, { key: `p_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize, fontSize: pctSize, fill: PDF_CREAM, fontWeight: "bold", fontFamily: "Jost" },
               `${pct.toFixed(0)}%`
+            )
+          );
+        }
+        if (showDollar) {
+          children.push(
+            h(Text, { key: `d_${rect.id}`, x: rect.x + pad, y: rect.y + pad + labelSize + 4 + pctSize + 4 + dollarSize, fontSize: dollarSize, fill: PDF_CREAM, fontFamily: "Jost" },
+              `$${Math.round(tile.value).toLocaleString("en-US")}/mo`
             )
           );
         }

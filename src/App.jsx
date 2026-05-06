@@ -1308,7 +1308,9 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
               const pctSize   = Math.max(10, Math.min(24, Math.min(rect.w / 3.6, rect.h / 2.6)));
               const labelSize = Math.max(7, Math.min(9, rect.w / 9));
               const moSize    = Math.max(6, Math.min(8, rect.w / 9));
-              const showMo    = rect.h > pctSize + labelSize + 16;
+              const showLabel      = rect.w >= 50 && rect.h >= 20;
+              const showPercentage = showLabel && rect.h >= 28;
+              const showDollar     = showLabel && rect.h >= 40;
 
               return (
                 <div
@@ -1336,14 +1338,14 @@ function MapScreen({ property, profile, shareCount, onBack, onShare, onCatAmount
                 >
                   {isUnalloc ? (
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, overflow: "hidden" }}>
-                      <div style={{ fontSize: labelSize, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600", color: "rgba(30,26,14,0.45)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>UNALLOCATED</div>
-                      {showMo && <div style={{ fontSize: moSize, color: "rgba(30,26,14,0.35)", marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo · room to grow</div>}
+                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600", color: "rgba(30,26,14,0.45)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>UNALLOCATED</div>}
+                      {showDollar && <div style={{ fontSize: moSize, color: "rgba(30,26,14,0.35)", marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo · room to grow</div>}
                     </div>
                   ) : (
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: `${pad}px`, color: "rgba(252,246,224,0.96)", textShadow: "0 1px 3px rgba(0,0,0,0.3)", overflow: "hidden" }}>
-                      <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>
-                      <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{pct}%</div>
-                      {showMo && <div style={{ fontSize: moSize, opacity: 0.62, marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo</div>}
+                      {showLabel && <div style={{ fontSize: labelSize, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: "600", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.82 }}>{tile.label}</div>}
+                      {showPercentage && <div style={{ fontSize: pctSize, fontWeight: "800", lineHeight: 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{pct}%</div>}
+                      {showDollar && <div style={{ fontSize: moSize, opacity: 0.62, marginTop: 2, whiteSpace: "nowrap" }}>${Math.round(tile.value).toLocaleString("en-US")}/mo</div>}
                     </div>
                   )}
                   {!isUnalloc && rect.w >= 55 && rect.h >= 48 && (
